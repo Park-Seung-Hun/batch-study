@@ -48,7 +48,7 @@ Spring Batch는 기본적으로 트랜잭션 관리를 위해 DataSource를 요�
 
 ### 처리
 - Embedded PostgreSQL 자동 시작
-- 메타 스키마 자동 생성 (`spring.batch.jdbc.initialize-schema: always`)
+- 메타 스키마 자동 생성 (Batch 스키마 SQL을 `spring.sql.init.schema-locations`에 포함)
 - 비즈니스 테이블 DDL 자동 실행 (`spring.sql.init.mode: always`)
 - helloJob 실행
 
@@ -62,6 +62,9 @@ Spring Batch는 기본적으로 트랜잭션 관리를 위해 DataSource를 요�
 - [x] 빌드 성공 (`./gradlew build`)
 - [x] Embedded PostgreSQL 자동 시작
 - [x] 메타 테이블 자동 생성
+  - 확인: `./gradlew test --tests 'com.test.batchstudy.SchemaInitializationTest'`
+- [x] 비즈니스 테이블 4개 생성 확인 (customer_stg, customer, customer_err, customer_daily_stats)
+  - 확인: `./gradlew test --tests 'com.test.batchstudy.SchemaInitializationTest'`
 - [x] helloJob 실행 후 COMPLETED 상태 확인
 
 ---
@@ -77,9 +80,8 @@ Spring Batch는 기본적으로 트랜잭션 관리를 위해 DataSource를 요�
 - [x] `io.zonky.test.postgres:embedded-postgres-binaries-bom:16.6.0`
 
 ### application.yml 설정
-- [x] `spring.batch.jdbc.initialize-schema: always`
 - [x] `spring.batch.job.enabled: false` (수동 실행 모드)
-- [x] `spring.sql.init.mode: always` (비즈니스 DDL 자동 실행)
+- [x] `spring.sql.init.mode: always` (메타/비즈니스 DDL 자동 실행)
 
 ### 설정 클래스
 - [x] `EmbeddedPostgresConfig.java` - Embedded PostgreSQL DataSource 설정
@@ -206,7 +208,9 @@ spring:
     init:
       # 비즈니스 테이블 DDL 자동 실행
       mode: always
-      schema-locations: classpath:schema/*.sql
+      schema-locations:
+        - classpath:org/springframework/batch/core/schema-postgresql.sql
+        - classpath:schema/*.sql
 
 logging:
   level:

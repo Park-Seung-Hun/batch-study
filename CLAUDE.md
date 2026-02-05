@@ -163,7 +163,7 @@ Conventional Commits 형식을 따른다.
 - `reader`: Reader 관련
 - `writer`: Writer 관련
 - `config`: 설정 관련
-- `week-XX`: 특정 주차 학습 관련
+- `doc`: 문서 관련
 
 ### 예시
 ```bash

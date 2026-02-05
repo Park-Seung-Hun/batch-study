@@ -31,6 +31,64 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ./gradlew clean build
 ```
 
+## Spring Batch 테스트
+
+### 테스트 실행
+```bash
+# 전체 테스트
+./gradlew test
+
+# 특정 테스트 클래스
+./gradlew test --tests "com.test.batchstudy.config.DomainStudyJobTest"
+
+# 특정 테스트 메서드
+./gradlew test --tests "*.DomainStudyJobTest.시나리오1*"
+```
+
+### 테스트 유틸리티
+| 유틸리티 | 용도 |
+|----------|------|
+| `JobLauncherTestUtils` | Job 실행 및 결과 검증 |
+| `JobRepositoryTestUtils` | 테스트 간 메타데이터 정리 |
+| `@SpringBatchTest` | 테스트 유틸리티 자동 구성 |
+
+### JobParameters 생성 예시
+```java
+// identifying 파라미터: JobInstance 구분에 사용
+new JobParametersBuilder()
+    .addString("runDate", "2025-02-05", true)  // identifying=true
+    .addLong("chunkSize", 100L, false)         // identifying=false (non-identifying)
+    .toJobParameters();
+```
+
+## Spring Batch 6.x 참고사항
+
+### 패키지 구조 변경 (5.x → 6.x)
+| 클래스 | 이전 패키지 (5.x) | 현재 패키지 (6.x) |
+|--------|------------------|------------------|
+| `Job` | `org.springframework.batch.core` | `org.springframework.batch.core.job` |
+| `JobExecution` | `org.springframework.batch.core` | `org.springframework.batch.core.job` |
+| `JobParameters` | `org.springframework.batch.core` | `org.springframework.batch.core.job.parameters` |
+| `JobParametersBuilder` | `org.springframework.batch.core` | `org.springframework.batch.core.job.parameters` |
+| `Step` | `org.springframework.batch.core` | `org.springframework.batch.core.step` |
+
+### Deprecation 경고 (6.0)
+다음 클래스/메서드는 deprecated되어 향후 제거 예정:
+- `JobLauncher` → 대안 확인 필요
+- `JobLauncherTestUtils` → 대안 확인 필요
+- `JobLauncherTestUtils.launchJob()` → 대안 확인 필요
+
+현재는 동작하지만, Spring Batch 7.x 마이그레이션 시 대체 API 확인 필요
+
+### 마이그레이션 가이드
+새로운 API나 변경사항 학습 시 참고:
+- [Spring Batch 5.0 Migration Guide](https://github.com/spring-projects/spring-batch/wiki/Spring-Batch-5.0-Migration-Guide)
+- [Spring Batch 5.1 Migration Guide](https://github.com/spring-projects/spring-batch/wiki/Spring-Batch-5.1-Migration-Guide)
+- [Spring Batch 5.2 Migration Guide](https://github.com/spring-projects/spring-batch/wiki/Spring-Batch-5.2-Migration-Guide)
+- [What's New in Spring Batch 5.0](https://docs.spring.io/spring-batch/reference/whatsnew.html)
+
+> 학습 중 import 오류나 deprecated 경고 발생 시 위 가이드에서 변경사항 확인
+
 ## 프로젝트 구조
 
 ```
@@ -105,7 +163,7 @@ Conventional Commits 형식을 따른다.
 - `reader`: Reader 관련
 - `writer`: Writer 관련
 - `config`: 설정 관련
-- `week-XX`: 특정 주차 학습 관련
+- `doc`: 문서 관련
 
 ### 예시
 ```bash

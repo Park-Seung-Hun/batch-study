@@ -1,0 +1,22 @@
+spring:
+  application:
+    name: batchstudy
+
+  batch:
+    # Job 자동 실행 비활성화 (명시적 실행만 허용)
+    job:
+      enabled: false
+    # 메타 테이블 자동 생성
+    jdbc:
+      initialize-schema: always
+
+  sql:
+    init:
+      # 비즈니스 테이블 DDL 자동 실행
+      mode: always
+      schema-locations: classpath:schema/*.sql
+
+logging:
+  level:
+    org.springframework.batch: INFO
+    com.test.batchstudy: DEBUG

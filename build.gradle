@@ -19,8 +19,23 @@ repositories {
 }
 
 dependencies {
-    implementation 'org.springframework.boot:spring-boot-starter'
+    implementation 'org.springframework.boot:spring-boot-starter-batch'
+    implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    runtimeOnly 'org.postgresql:postgresql'
+
+    // Lombok
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    // Embedded PostgreSQL (개발/테스트 환경)
+    implementation enforcedPlatform('io.zonky.test.postgres:embedded-postgres-binaries-bom:16.6.0')
+    implementation 'io.zonky.test:embedded-postgres:2.1.0'
+
+    testCompileOnly 'org.projectlombok:lombok'
+    testAnnotationProcessor 'org.projectlombok:lombok'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.batch:spring-batch-test'
+    testImplementation 'io.zonky.test:embedded-database-spring-test:2.6.0'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 

@@ -205,6 +205,16 @@ SELECT COUNT(*) FROM customer WHERE updated_at >= CURRENT_DATE;
 SELECT COUNT(*) FROM customer_err WHERE run_date = '2025-02-05';
 ```
 
+### 문서 동기화 규칙
+
+> ⚠️ **중요**: 코드 변경 시 `docs/README.md`도 함께 업데이트해야 합니다.
+
+| 변경 사항 | 업데이트 대상 |
+|-----------|--------------|
+| 주차별 학습 완료 | 주차별 상태 (⬜ → ✅) |
+| Job/Step 추가/수정 | Job/Step 구성 섹션 |
+| 새로운 파라미터 추가 | 권장 파라미터 표준 |
+
 ## 문서 인덱스
 
 - [주차별 학습 문서](docs/README.md)

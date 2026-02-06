@@ -32,9 +32,9 @@
 
 | 주차 | 주제 | 핵심 키워드 | 상태 |
 |------|------|-------------|------|
-| [Week 00](week-00-setup.md) | 환경 세팅 | PostgreSQL, 메타 스키마, Gradle | ⬜ |
-| [Week 01](week-01-domain-language.md) | 배치 도메인 언어 | Job, Step, Execution, JobRepository | ⬜ |
-| [Week 02](week-02-csv-to-staging.md) | CSV → Staging | Chunk, FlatFileItemReader, JdbcBatchItemWriter | ⬜ |
+| [Week 00](week-00-setup.md) | 환경 세팅 | PostgreSQL, 메타 스키마, Gradle | ✅ |
+| [Week 01](week-01-domain-language.md) | 배치 도메인 언어 | Job, Step, Execution, JobRepository | ✅ |
+| [Week 02](week-02-csv-to-staging.md) | CSV → Staging | Chunk, FlatFileItemReader, JdbcBatchItemWriter | ✅ |
 | [Week 03](week-03-validate-upsert-flow.md) | 검증 + 업서트 + Flow | Multi-Step, Tasklet, Decider | ⬜ |
 | [Week 04](week-04-restartability.md) | 재시작 | ExecutionContext, ItemStream, 멱등성 | ⬜ |
 | [Week 05](week-05-fault-tolerance.md) | 내결함성 | Skip, Retry, Listener, 오류 격리 | ⬜ |
@@ -46,16 +46,24 @@
 
 ---
 
-## 예상 Job/Step 구성
+## Job/Step 구성
 
+### domainStudyJob (Week 01: 도메인 학습용)
+```
+domainStudyJob                    ✅ 구현 완료
+├── domainStep1 (Tasklet)         ✅ runDate 파라미터 로깅
+└── domainStep2 (Tasklet)         ✅ chunkSize 파라미터 로깅
+```
+
+### customerImportJob (Week 02~08: ETL 파이프라인)
 ```
 customerImportJob
-├── initStep (Tasklet)           # 초기화/검증
-├── csvToStagingStep (Chunk)     # CSV → customer_stg
-├── validateStep (Tasklet)       # 스테이징 검증
-├── stagingToTargetStep (Chunk)  # customer_stg → customer (업서트)
-├── errorIsolateStep (Tasklet)   # 오류 레코드 격리
-└── statsStep (Tasklet)          # 일별 집계 (선택)
+├── initStep (Tasklet)           ⬜ Week 03 예정 - 초기화/검증
+├── csvToStagingStep (Chunk)     ✅ Week 02 완료 - CSV → customer_stg
+├── validateStep (Tasklet)       ⬜ Week 03 예정 - 스테이징 검증
+├── stagingToTargetStep (Chunk)  ⬜ Week 03 예정 - customer_stg → customer (업서트)
+├── errorIsolateStep (Tasklet)   ⬜ Week 05 예정 - 오류 레코드 격리
+└── statsStep (Tasklet)          ⬜ 선택 - 일별 집계
 ```
 
 ### Step Flow

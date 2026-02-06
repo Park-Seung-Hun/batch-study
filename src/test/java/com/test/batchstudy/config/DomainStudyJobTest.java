@@ -9,9 +9,7 @@ import org.springframework.batch.core.job.JobExecution;
 import org.springframework.batch.core.job.parameters.JobParameters;
 import org.springframework.batch.core.job.parameters.JobParametersBuilder;
 import org.springframework.batch.core.launch.JobInstanceAlreadyCompleteException;
-import org.springframework.batch.core.launch.JobLauncher;
-import org.springframework.batch.core.repository.JobRepository;
-import org.springframework.batch.test.JobLauncherTestUtils;
+import org.springframework.batch.test.JobOperatorTestUtils;
 import org.springframework.batch.test.JobRepositoryTestUtils;
 import org.springframework.batch.test.context.SpringBatchTest;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class DomainStudyJobTest {
 
     @Autowired
-    private JobLauncherTestUtils jobLauncherTestUtils;
+    private JobOperatorTestUtils jobOperatorTestUtils;
 
     @Autowired
     private JobRepositoryTestUtils jobRepositoryTestUtils;
@@ -41,16 +39,10 @@ class DomainStudyJobTest {
     @Autowired
     private Job domainStudyJob;
 
-    @Autowired
-    private JobLauncher jobLauncher;
-
-    @Autowired
-    private JobRepository jobRepository;
-
     @BeforeEach
     void setUp() {
         jobRepositoryTestUtils.removeJobExecutions();
-        jobLauncherTestUtils.setJob(domainStudyJob);
+        jobOperatorTestUtils.setJob(domainStudyJob);
     }
 
     @Test
@@ -63,7 +55,7 @@ class DomainStudyJobTest {
                 .toJobParameters();
 
         // when
-        JobExecution execution = jobLauncherTestUtils.launchJob(params);
+        JobExecution execution = jobOperatorTestUtils.startJob(params);
 
         // then
         assertThat(execution.getStatus()).isEqualTo(BatchStatus.COMPLETED);
@@ -79,11 +71,11 @@ class DomainStudyJobTest {
                 .addLong("chunkSize", 100L, false)
                 .toJobParameters();
 
-        JobExecution firstExecution = jobLauncherTestUtils.launchJob(params);
+        JobExecution firstExecution = jobOperatorTestUtils.startJob(params);
         assertThat(firstExecution.getStatus()).isEqualTo(BatchStatus.COMPLETED);
 
         // when & then - 동일 파라미터로 재실행 시 예외 발생
-        assertThatThrownBy(() -> jobLauncher.run(domainStudyJob, params))
+        assertThatThrownBy(() -> jobOperatorTestUtils.startJob(params))
                 .isInstanceOf(JobInstanceAlreadyCompleteException.class);
     }
 
@@ -96,7 +88,7 @@ class DomainStudyJobTest {
                 .addLong("chunkSize", 100L, false)
                 .toJobParameters();
 
-        JobExecution execution1 = jobLauncherTestUtils.launchJob(params1);
+        JobExecution execution1 = jobOperatorTestUtils.startJob(params1);
         assertThat(execution1.getStatus()).isEqualTo(BatchStatus.COMPLETED);
 
         // when - runDate 변경하여 두 번째 실행
@@ -105,7 +97,7 @@ class DomainStudyJobTest {
                 .addLong("chunkSize", 100L, false)
                 .toJobParameters();
 
-        JobExecution execution2 = jobLauncherTestUtils.launchJob(params2);
+        JobExecution execution2 = jobOperatorTestUtils.startJob(params2);
 
         // then - 새로운 JobInstance로 성공적으로 실행
         assertThat(execution2.getStatus()).isEqualTo(BatchStatus.COMPLETED);
@@ -126,7 +118,7 @@ class DomainStudyJobTest {
                 .addLong("chunkSize", 100L, false)
                 .toJobParameters();
 
-        JobExecution execution1 = jobLauncherTestUtils.launchJob(params1);
+        JobExecution execution1 = jobOperatorTestUtils.startJob(params1);
         assertThat(execution1.getStatus()).isEqualTo(BatchStatus.COMPLETED);
 
         // when & then - non-identifying 파라미터(chunkSize)만 변경해도 동일 JobInstance로 인해 예외 발생
@@ -135,7 +127,7 @@ class DomainStudyJobTest {
                 .addLong("chunkSize", 200L, false)  // chunkSize만 변경
                 .toJobParameters();
 
-        assertThatThrownBy(() -> jobLauncher.run(domainStudyJob, params2))
+        assertThatThrownBy(() -> jobOperatorTestUtils.startJob(params2))
                 .isInstanceOf(JobInstanceAlreadyCompleteException.class);
     }
 }

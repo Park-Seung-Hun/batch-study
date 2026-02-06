@@ -9,7 +9,7 @@ import org.springframework.batch.core.job.JobExecution;
 import org.springframework.batch.core.job.parameters.JobParameters;
 import org.springframework.batch.core.job.parameters.JobParametersBuilder;
 import org.springframework.batch.core.step.StepExecution;
-import org.springframework.batch.test.JobLauncherTestUtils;
+import org.springframework.batch.test.JobOperatorTestUtils;
 import org.springframework.batch.test.JobRepositoryTestUtils;
 import org.springframework.batch.test.context.SpringBatchTest;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class CustomerImportJobTest {
 
     @Autowired
-    private JobLauncherTestUtils jobLauncherTestUtils;
+    private JobOperatorTestUtils jobOperatorTestUtils;
 
     @Autowired
     private JobRepositoryTestUtils jobRepositoryTestUtils;
@@ -45,7 +45,7 @@ class CustomerImportJobTest {
     @BeforeEach
     void setUp() {
         jobRepositoryTestUtils.removeJobExecutions();
-        jobLauncherTestUtils.setJob(customerImportJob);
+        jobOperatorTestUtils.setJob(customerImportJob);
         // 테스트 전 스테이징 테이블 초기화
         jdbcTemplate.execute("DELETE FROM customer_stg");
     }
@@ -60,7 +60,7 @@ class CustomerImportJobTest {
                 .toJobParameters();
 
         // when
-        JobExecution execution = jobLauncherTestUtils.launchJob(params);
+        JobExecution execution = jobOperatorTestUtils.startJob(params);
 
         // then
         assertThat(execution.getStatus()).isEqualTo(BatchStatus.COMPLETED);
@@ -83,7 +83,7 @@ class CustomerImportJobTest {
                 .toJobParameters();
 
         // when
-        JobExecution execution = jobLauncherTestUtils.launchJob(params);
+        JobExecution execution = jobOperatorTestUtils.startJob(params);
 
         // then
         StepExecution stepExecution = execution.getStepExecutions().iterator().next();
@@ -101,7 +101,7 @@ class CustomerImportJobTest {
                 .toJobParameters();
 
         // when
-        JobExecution execution = jobLauncherTestUtils.launchJob(params);
+        JobExecution execution = jobOperatorTestUtils.startJob(params);
 
         // then
         StepExecution stepExecution = execution.getStepExecutions().iterator().next();

@@ -48,7 +48,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### 테스트 유틸리티
 | 유틸리티 | 용도 |
 |----------|------|
-| `JobLauncherTestUtils` | Job 실행 및 결과 검증 |
+| `JobOperatorTestUtils` | Job 실행 및 결과 검증 (`startJob()` 사용) |
 | `JobRepositoryTestUtils` | 테스트 간 메타데이터 정리 |
 | `@SpringBatchTest` | 테스트 유틸리티 자동 구성 |
 
@@ -72,13 +72,14 @@ new JobParametersBuilder()
 | `JobParametersBuilder` | `org.springframework.batch.core` | `org.springframework.batch.core.job.parameters` |
 | `Step` | `org.springframework.batch.core` | `org.springframework.batch.core.step` |
 
-### Deprecation 경고 (6.0)
-다음 클래스/메서드는 deprecated되어 향후 제거 예정:
-- `JobLauncher` → 대안 확인 필요
-- `JobLauncherTestUtils` → 대안 확인 필요
-- `JobLauncherTestUtils.launchJob()` → 대안 확인 필요
+### Deprecated API 대체 (6.0 → 6.2 제거 예정)
+| Deprecated | 대안 | 상태 |
+|------------|------|------|
+| `JobLauncher` | `JobOperator` | ✅ 적용 완료 |
+| `JobLauncherTestUtils` | `JobOperatorTestUtils` | ✅ 적용 완료 |
+| `launchJob()` | `startJob()` | ✅ 적용 완료 |
 
-현재는 동작하지만, Spring Batch 7.x 마이그레이션 시 대체 API 확인 필요
+> ⚠️ **규칙**: 본 프로젝트에서는 deprecated API 대신 대안을 사용합니다.
 
 ### 마이그레이션 가이드
 새로운 API나 변경사항 학습 시 참고:

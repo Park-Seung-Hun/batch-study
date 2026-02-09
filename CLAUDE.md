@@ -90,6 +90,150 @@ new JobParametersBuilder()
 
 > 학습 중 import 오류나 deprecated 경고 발생 시 위 가이드에서 변경사항 확인
 
+## Spring Batch 구현 패턴
+
+> Week 03 이후 학습한 Spring Batch 핵심 패턴을 정리합니다.
+
+### Tasklet vs Chunk
+
+| 구분 | Tasklet | Chunk |
+|------|---------|-------|
+| 용도 | 단발성 작업 (검증, 집계, 파일 이동) | 대량 데이터 반복 처리 |
+| 트랜잭션 | 단일 트랜잭션 | 청크 단위 트랜잭션 분할 |
+| 구현 | `Tasklet` 인터페이스 | Reader → Processor → Writer |
+
+```java
+// Tasklet 기본 구조
+@Component
+@StepScope
+@RequiredArgsConstructor
+public class MyTasklet implements Tasklet {
+
+    @Value("#{jobParameters['runDate']}")
+    private String runDate;
+
+    @Override
+    public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) {
+        // 작업 수행
+        return RepeatStatus.FINISHED;
+    }
+}
+```
+
+### ExitStatus 기반 Flow 분기
+
+Step의 ExitStatus를 커스텀하여 Flow 분기 조건으로 활용합니다.
+
+```java
+// Tasklet에서 ExitStatus 설정
+if (hasErrors) {
+    contribution.setExitStatus(new ExitStatus("INVALID"));
+} else {
+    contribution.setExitStatus(ExitStatus.COMPLETED);
+}
+
+// Job Flow에서 ExitStatus 기반 분기
+new JobBuilder("myJob", jobRepository)
+    .start(validateStep)
+        .on("COMPLETED").to(successStep)  // COMPLETED → 정상 경로
+    .from(validateStep)
+        .on("INVALID").to(errorStep)      // INVALID → 오류 경로
+    .from(validateStep)
+        .on("*").fail()                   // 그 외 → 실패
+    .end()
+    .build();
+```
+
+### Flow 경로 합류 (Path Merging)
+
+여러 분기 경로가 공통 Step으로 합류하는 패턴입니다.
+
+```java
+// 분기 후 공통 Step으로 합류
+new JobBuilder("customerImportJob", jobRepository)
+    .start(csvToStagingStep)
+    .next(validateStep)
+        .on("COMPLETED").to(stagingToTargetStep)
+    .from(validateStep)
+        .on("INVALID").to(errorIsolateStep)
+    // 양쪽 경로 모두 statsStep으로 합류
+    .from(stagingToTargetStep).on("*").to(statsStep)
+    .from(errorIsolateStep).on("*").to(statsStep)
+    // statsStep 결과에 따라 최종 상태 결정
+    .from(statsStep).on("FAILED").fail()
+    .from(statsStep).on("*").end()
+    .end()
+    .build();
+```
+
+### PostgreSQL UPSERT 패턴
+
+`ON CONFLICT` 구문으로 INSERT/UPDATE를 단일 쿼리로 처리합니다.
+
+```java
+@Bean
+public JdbcBatchItemWriter<Customer> customerUpsertWriter() {
+    String sql = """
+        INSERT INTO customer (customer_id, email, name, phone)
+        VALUES (:customerId, :email, :name, :phone)
+        ON CONFLICT (customer_id)
+        DO UPDATE SET
+            email = EXCLUDED.email,           -- EXCLUDED: INSERT하려던 값 참조
+            name = EXCLUDED.name,
+            phone = EXCLUDED.phone,
+            updated_at = CURRENT_TIMESTAMP    -- 갱신 시간만 업데이트
+        """;
+
+    return new JdbcBatchItemWriterBuilder<Customer>()
+        .dataSource(dataSource)
+        .sql(sql)
+        .beanMapped()  // DTO 필드 → Named Parameter 자동 매핑
+        .build();
+}
+```
+
+| 키워드 | 설명 |
+|--------|------|
+| `ON CONFLICT (column)` | 충돌 감지 기준 컬럼 (UNIQUE 제약) |
+| `DO UPDATE SET` | 충돌 시 UPDATE 수행 |
+| `EXCLUDED.column` | INSERT하려던 새 값 참조 |
+| `DO NOTHING` | 충돌 시 무시 (INSERT 스킵) |
+
+### StepScope와 Late Binding
+
+`@StepScope`를 사용하면 Step 실행 시점에 Bean이 생성되어 JobParameter를 주입받을 수 있습니다.
+
+```java
+@Bean
+@StepScope  // Step 실행 시점에 Bean 생성
+public FlatFileItemReader<CustomerCsv> customerCsvReader(
+        @Value("#{jobParameters['inputFile']}") String inputFile) {  // Late Binding
+    return new FlatFileItemReaderBuilder<CustomerCsv>()
+        .name("customerCsvReader")
+        .resource(new FileSystemResource(inputFile))
+        .build();
+}
+```
+
+### 데이터 검증 SQL 패턴
+
+스테이징 테이블에서 오류 레코드를 식별하는 검증 쿼리 패턴입니다.
+
+```sql
+-- 오류 건수 조회 (이메일 형식, NULL 체크, 중복 체크)
+SELECT COUNT(*) FROM customer_stg
+WHERE run_date = ?
+  AND (
+    email NOT LIKE '%@%'           -- 이메일 형식 오류
+    OR customer_id IS NULL         -- 필수값 누락
+    OR customer_id IN (            -- 중복 데이터
+        SELECT customer_id FROM customer_stg
+        WHERE run_date = ?
+        GROUP BY customer_id HAVING COUNT(*) > 1
+    )
+  )
+```
+
 ## 프로젝트 구조
 
 ```

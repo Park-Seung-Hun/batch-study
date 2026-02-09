@@ -35,7 +35,7 @@
 | [Week 00](week-00-setup.md) | 환경 세팅 | PostgreSQL, 메타 스키마, Gradle | ✅ |
 | [Week 01](week-01-domain-language.md) | 배치 도메인 언어 | Job, Step, Execution, JobRepository | ✅ |
 | [Week 02](week-02-csv-to-staging.md) | CSV → Staging | Chunk, FlatFileItemReader, JdbcBatchItemWriter | ✅ |
-| [Week 03](week-03-validate-upsert-flow.md) | 검증 + 업서트 + Flow | Multi-Step, Tasklet, Decider | ⬜ |
+| [Week 03](week-03-validate-upsert-flow.md) | 검증 + 업서트 + Flow | Multi-Step, Tasklet, ExitStatus 분기 | ✅ |
 | [Week 04](week-04-restartability.md) | 재시작 | ExecutionContext, ItemStream, 멱등성 | ⬜ |
 | [Week 05](week-05-fault-tolerance.md) | 내결함성 | Skip, Retry, Listener, 오류 격리 | ⬜ |
 | [Week 06](week-06-params-scope.md) | 파라미터 + Scope | JobScope, StepScope, Late Binding | ⬜ |
@@ -58,20 +58,22 @@ domainStudyJob                    ✅ 구현 완료
 ### customerImportJob (Week 02~08: ETL 파이프라인)
 ```
 customerImportJob
-├── initStep (Tasklet)           ⬜ Week 03 예정 - 초기화/검증
-├── csvToStagingStep (Chunk)     ✅ Week 02 완료 - CSV → customer_stg
-├── validateStep (Tasklet)       ⬜ Week 03 예정 - 스테이징 검증
-├── stagingToTargetStep (Chunk)  ⬜ Week 03 예정 - customer_stg → customer (업서트)
-├── errorIsolateStep (Tasklet)   ⬜ Week 05 예정 - 오류 레코드 격리
-└── statsStep (Tasklet)          ⬜ 선택 - 일별 집계
+├── csvToStagingStep (Chunk)     ✅ Week 02 - CSV → customer_stg
+├── validateStep (Tasklet)       ✅ Week 03 - 스테이징 검증 (ExitStatus: COMPLETED/INVALID)
+├── stagingToTargetStep (Chunk)  ✅ Week 03 - customer_stg → customer (UPSERT)
+├── errorIsolateStep (Tasklet)   ✅ Week 03 - 오류 레코드 격리
+└── statsStep (Tasklet)          ✅ Week 03 - 일별 집계 (ExitStatus: COMPLETED/FAILED)
 ```
 
-### Step Flow
+### Step Flow (Week 03 구현 완료)
 ```
-initStep → csvToStagingStep → validateStep
-                                   ↓
-                    [VALID] → stagingToTargetStep → statsStep
-                    [INVALID] → errorIsolateStep → FAILED
+csvToStagingStep → validateStep
+                       ↓
+       [COMPLETED] → stagingToTargetStep ─┐
+       [INVALID] → errorIsolateStep ──────┼──→ statsStep
+                                          │         ↓
+                                          │    [오류 없음] → 완료
+                                          └──→ [오류 있음] → FAILED
 ```
 
 ---

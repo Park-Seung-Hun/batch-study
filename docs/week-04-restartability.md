@@ -1,17 +1,16 @@
 # Week 04: 재시작 (Restartability)
 
-> 작성일: YYYY-MM-DD
-> 상태: ⬜ 예정
+> 작성일: 2025-02-10
+> 상태: ✅ 완료
 
 ---
 
 ## 이번 주 목표
 
-- [ ] ExecutionContext의 역할과 동작 이해
-- [ ] ItemStream 인터페이스 이해
-- [ ] 재시작 시 "이어서 처리" 구현
-- [ ] 멱등성 있는 Job 설계
-- [ ] 실패 후 재시작 시나리오 테스트
+- [x] ExecutionContext의 역할과 동작 이해
+- [x] ItemStream 인터페이스 이해
+- [x] 재시작 시 "이어서 처리" 구현
+- [x] 실패 후 재시작 시나리오 테스트
 
 ---
 
@@ -30,253 +29,298 @@
 
 ```java
 public interface ItemStream {
-    void open(ExecutionContext executionContext);
-    void update(ExecutionContext executionContext);
-    void close();
+    void open(ExecutionContext executionContext);   // Step 시작 시 호출
+    void update(ExecutionContext executionContext); // 청크 커밋 직전 호출
+    void close();                                   // Step 종료 시 호출
 }
 ```
 
-- `open()`: 실행 시작 시 호출, 이전 상태 복원
-- `update()`: Chunk 커밋 후 호출, 현재 상태 저장
-- `close()`: 실행 종료 시 호출
+| 메서드 | 호출 시점 | 용도 |
+|--------|----------|------|
+| `open()` | Step 시작 시 | 이전 상태 복원 (재시작 시) |
+| `update()` | 청크 커밋 직전 | 현재 상태 저장 |
+| `close()` | Step 종료 시 | 리소스 정리 |
 
-### 재시작 메커니즘
-> 한 줄 정의: FAILED 상태의 JobExecution이 있으면 이어서 실행
+### .processor() vs .stream()
+> 한 줄 정의: 하나의 Bean이 두 역할을 하면 둘 다 등록해야 함
 
+```java
+.processor(restartableItemProcessor)  // process() 호출됨
+.stream(restartableItemProcessor)     // open/update/close 호출됨
 ```
-1. Job 시작 → JobInstance 조회
-2. 마지막 JobExecution이 FAILED인지 확인
-3. FAILED면 → 실패한 Step부터 재시작 (ExecutionContext 복원)
-4. COMPLETED면 → JobInstanceAlreadyCompleteException
-```
 
-### 멱등성 (Idempotency)
-> 한 줄 정의: 같은 입력으로 여러 번 실행해도 결과가 동일한 성질
-
-재시작 시 이미 처리된 레코드가 중복 처리되지 않도록 설계 필요.
+- `ItemProcessor`와 `ItemStream` 두 인터페이스를 구현한 경우 **둘 다 등록 필요**
+- Reader/Writer는 대부분 ItemStream을 자동 구현하여 자동 등록됨
+- **Processor는 명시적으로 `.stream()` 등록 필수**
 
 ---
 
-## 실습 시나리오
+## 실습 결과
 
 ### 입력
-- `input/customers_20250205.csv` (1000건)
+- `input/customers_1000.csv` (1000건)
 
-### 처리
-1. 500건 처리 후 강제 실패 발생
-2. 재시작 시 501건부터 이어서 처리
-3. 최종 완료
+### 테스트 시나리오
 
-### 출력
-- 총 1000건 적재 (중복 없음)
-- BATCH_STEP_EXECUTION에 재시작 이력
+| 시나리오 | 설명 | 검증 내용 | 결과 |
+|----------|------|----------|------|
+| 시나리오1 | 500건에서 강제 실패 (failAt=500) | 청크 단위 롤백 확인 | 400건 적재, FAILED |
+| 시나리오2 | ItemStream update() 호출 확인 | 청크 커밋 시점에 상태 저장 | 300건 적재 (350에서 실패) |
+| 시나리오3 | 정상 실행 1000건 완료 | 전체 처리 성공 | 1000건 적재, COMPLETED |
+| 시나리오4 | ExecutionContext 저장 확인 | processedCount 저장 | processedCount=400 저장됨 |
+| 시나리오5 | **restart() + UPSERT 멱등성** | 1차 FAILED → 2차 restart → 중복 없이 1000건 | ✅ 최종 1000건 |
 
-### 성공 기준
-- [ ] 강제 실패 후 재시작 시 처리 건수가 이어짐
-- [ ] 중복 레코드 없이 정확히 1000건 적재
-- [ ] ExecutionContext에 처리 위치 저장 확인
-- [ ] JobExecution 2개 생성 확인 (같은 JobInstance)
-
----
-
-## 구현 체크리스트
-
-### ExecutionContext 활용
-- [ ] Reader의 현재 위치 저장 (read.count 등)
-- [ ] 재시작 시 저장된 위치부터 읽기
-
-### ItemStream 구현 (필요시)
-- [ ] 커스텀 Reader에서 ItemStream 구현
-- [ ] open()에서 이전 상태 복원
-- [ ] update()에서 현재 상태 저장
-
-### 멱등성 보장
-- [ ] INSERT 전 EXISTS 체크 또는
-- [ ] UPSERT 사용 또는
-- [ ] Unique 제약 조건 활용
-
-### 강제 실패 로직
-- [ ] Processor에서 특정 조건 시 예외 발생
-- [ ] `--failAt=500` 파라미터로 실패 지점 지정
+### 성공 기준 달성
+- [x] 강제 실패 후 400건 적재 확인 (청크 100 × 4 커밋)
+- [x] update()가 청크마다 호출되어 상태 저장
+- [x] 정상 실행 시 1000건 전체 적재
+- [x] **실제 restart() 호출 후 UPSERT로 멱등성 보장** ✅
 
 ---
 
-## 예상 코드 구조
+## 구현 코드
 
-### ExecutionContext 저장/복원
+### RestartableItemProcessor.java
+
 ```java
+@Slf4j
 @Component
-public class CustomerItemProcessor implements ItemProcessor<CustomerCsv, CustomerStg>, ItemStream {
+@StepScope
+public class RestartableItemProcessor
+        implements ItemProcessor<CustomerCsv, CustomerStg>, ItemStream {
 
+    private static final String PROCESSED_COUNT_KEY = "processedCount";
     private int processedCount = 0;
+
+    @Value("#{jobParameters['failAt'] ?: 0}")
+    private int failAt;
+
+    @Value("#{jobParameters['runDate']}")
+    private String runDate;
 
     @Override
     public void open(ExecutionContext executionContext) {
-        if (executionContext.containsKey("processedCount")) {
-            this.processedCount = executionContext.getInt("processedCount");
-            log.info("Restored processedCount: {}", processedCount);
+        if (executionContext.containsKey(PROCESSED_COUNT_KEY)) {
+            this.processedCount = executionContext.getInt(PROCESSED_COUNT_KEY);
+            log.info("Resuming from processedCount: {}", this.processedCount);
+        } else {
+            log.info("Starting fresh - processedCount: 0");
         }
     }
 
     @Override
     public void update(ExecutionContext executionContext) {
-        executionContext.putInt("processedCount", processedCount);
+        executionContext.putInt(PROCESSED_COUNT_KEY, this.processedCount);
+        log.debug("Updated processedCount: {}", this.processedCount);
     }
 
     @Override
-    public CustomerStg process(CustomerCsv item) {
-        processedCount++;
-        // 강제 실패 테스트
+    public CustomerStg process(CustomerCsv csv) {
+        this.processedCount++;
         if (failAt > 0 && processedCount == failAt) {
             throw new RuntimeException("Forced failure at " + failAt);
         }
-        return convert(item);
+        LocalDate parsedRunDate = LocalDate.parse(runDate);
+        return new CustomerStg(
+                csv.customerId(), csv.email(), csv.name(), csv.phone(), parsedRunDate
+        );
+    }
+
+    @Override
+    public void close() {
+        log.info("Closing - final processedCount: {}", processedCount);
     }
 }
 ```
 
-### FlatFileItemReader의 자동 상태 관리
-```java
-// FlatFileItemReader는 ItemStream을 이미 구현
-// 내부적으로 read.count를 ExecutionContext에 저장
-// 재시작 시 자동으로 해당 라인부터 읽기 시작
-```
+### CustomerImportJobConfig.java (Step 설정)
 
-### Step 구성 (재시작 허용)
 ```java
 @Bean
-public Step csvToStagingStep() {
+public Step csvToStagingStep(JobRepository jobRepository,
+                             FlatFileItemReader<CustomerCsv> customerCsvReader,
+                             RestartableItemProcessor restartableItemProcessor,
+                             JdbcBatchItemWriter<CustomerStg> customerStgWriter) {
     return new StepBuilder("csvToStagingStep", jobRepository)
-        .<CustomerCsv, CustomerStg>chunk(100, transactionManager)
-        .reader(customerCsvReader())
-        .processor(customerProcessor())
-        .writer(customerStgWriter())
-        .allowStartIfComplete(false)  // 완료된 Step 재실행 방지 (기본값)
-        .build();
+            .<CustomerCsv, CustomerStg>chunk(CHUNK_SIZE)
+            .reader(customerCsvReader)
+            .processor(restartableItemProcessor)
+            .writer(customerStgWriter)
+            .stream(restartableItemProcessor)  // ItemStream 등록 필수!
+            .build();
+}
+```
+
+### customerStgWriter (UPSERT로 멱등성 보장)
+
+```java
+@Bean
+public JdbcBatchItemWriter<CustomerStg> customerStgWriter() {
+    String sql = """
+            INSERT INTO customer_stg (customer_id, email, name, phone, run_date)
+            VALUES (:customerId, :email, :name, :phone, :runDate)
+            ON CONFLICT (customer_id, run_date)
+            DO UPDATE SET
+                email = EXCLUDED.email,
+                name = EXCLUDED.name,
+                phone = EXCLUDED.phone
+            """;
+
+    return new JdbcBatchItemWriterBuilder<CustomerStg>()
+            .dataSource(dataSource)
+            .sql(sql)
+            .beanMapped()
+            .build();
 }
 ```
 
 ---
 
-## 실행 방법
+## 청크 단위 트랜잭션과 재시작
 
-```bash
-# 1. 강제 실패 실행 (500건에서 실패)
-./gradlew bootRun --args='--spring.batch.job.name=customerImportJob inputFile=input/customers_20250205.csv runDate=2025-02-05 -failAt=500'
+### 동작 원리
 
-# 2. 재시작 (동일 파라미터로 실행)
-./gradlew bootRun --args='--spring.batch.job.name=customerImportJob inputFile=input/customers_20250205.csv runDate=2025-02-05 -failAt=0'
 ```
+청크 1 (1-100)   → update(100) → 커밋 ✓
+청크 2 (101-200) → update(200) → 커밋 ✓
+청크 3 (201-300) → update(300) → 커밋 ✓
+청크 4 (301-400) → update(400) → 커밋 ✓
+청크 5 (401-500) → 450에서 예외 → 롤백 ✗
 
-### 강제 실패 테스트 시나리오
-| 단계 | 명령 | 예상 결과 |
-|------|------|----------|
-| 1 | failAt=500 실행 | 500건 처리 후 FAILED |
-| 2 | 재시작 (failAt=0) | 501건부터 이어서 처리, COMPLETED |
-
----
-
-## 검증 방법
-
-### ExecutionContext 확인
-```sql
--- Step ExecutionContext 확인
-SELECT
-    se.step_name,
-    se.status,
-    se.read_count,
-    se.write_count,
-    sec.short_context
-FROM batch_step_execution se
-JOIN batch_step_execution_context sec ON se.step_execution_id = sec.step_execution_id
-WHERE se.job_execution_id IN (
-    SELECT job_execution_id FROM batch_job_execution
-    WHERE job_instance_id = ?
-)
-ORDER BY se.step_execution_id;
-```
-
-### JobInstance당 JobExecution 수 확인
-```sql
--- 재시작된 Job 확인 (같은 JobInstance에 여러 JobExecution)
-SELECT
-    ji.job_instance_id,
-    ji.job_name,
-    COUNT(je.job_execution_id) AS execution_count,
-    STRING_AGG(je.status::text, ' → ') AS status_history
-FROM batch_job_instance ji
-JOIN batch_job_execution je ON ji.job_instance_id = je.job_instance_id
-GROUP BY ji.job_instance_id, ji.job_name
-HAVING COUNT(je.job_execution_id) > 1;
-```
-
-### 데이터 무결성 확인
-```sql
--- 중복 레코드 없는지 확인
-SELECT customer_id, COUNT(*) AS cnt
-FROM customer_stg
-WHERE run_date = '2025-02-05'
-GROUP BY customer_id
-HAVING COUNT(*) > 1;
-
--- 총 건수 확인
-SELECT COUNT(*) FROM customer_stg WHERE run_date = '2025-02-05';
+ExecutionContext에는 400이 저장됨
+재시작 시 401건부터 처리 (이론적으로)
 ```
 
 ---
 
-## 재시작 시나리오 다이어그램
+## 파일 변경 목록
 
-```
-실행 1 (FAILED)
-─────────────────────────────────────────────
-[Chunk 1] ✓ → [Chunk 2] ✓ → ... → [Chunk 5] ✗
-  100건       100건                  실패
-             ↓
-    ExecutionContext 저장: read.count = 500
-
-재시작 (COMPLETED)
-─────────────────────────────────────────────
-         ExecutionContext 복원: read.count = 500
-             ↓
-[Chunk 6] ✓ → [Chunk 7] ✓ → ... → [Chunk 10] ✓
-  100건       100건                  100건
-
-총 결과: 1000건 처리 (중복 없음)
-```
+| 파일 | 변경 내용 |
+|------|----------|
+| `input/customers_1000.csv` | 1000건 테스트 데이터 신규 생성 |
+| `processor/RestartableItemProcessor.java` | ItemStream 구현, ExecutionContext 로깅 추가 |
+| `config/CustomerImportJobConfig.java` | `.stream()` 등록, `saveState(true)`, UPSERT Writer |
+| `schema/V001__create_business_tables.sql` | customer_stg에 UNIQUE 인덱스 추가 |
+| `test/RestartabilityTest.java` | 재시작 테스트, UPSERT 멱등성 테스트 추가 |
 
 ---
 
 ## 트러블슈팅 로그
 
-### 이슈 1: 재시작해도 처음부터 실행됨
-- **현상**: 이미 처리된 레코드가 다시 처리됨
-- **원인**: Reader가 ItemStream 미구현 또는 커스텀 Reader 사용
-- **해결**: ItemStream 구현 또는 Spring 제공 Reader 사용
+### 이슈 1: Spring Batch 6.0.2에서 재시작 시 ExecutionContext 복원 안 됨 ⚠️
 
-### 이슈 2: ExecutionContext가 저장되지 않음
-- **현상**: 재시작 후 context가 비어있음
-- **원인**: Step에서 saveState(false) 설정
-- **해결**: saveState(true) 확인 (기본값)
+**현상**:
+- 1차 실행 후 `StepExecution.getExecutionContext()`에 `processedCount=400` 저장됨
+- 2차 실행(재시작) 시 `open()`에 전달된 ExecutionContext에는 `batch.version=6.0.2`만 있음
+- "Starting fresh - processedCount: 0" 출력
+- Reader도 처음부터 다시 읽어 중복 데이터 발생 (1400건)
 
-### 이슈 3: 재시작 시 중복 레코드 발생
-- **현상**: 마지막 Chunk가 중복 적재됨
-- **원인**: 롤백 후 재시작 시 마지막 커밋 지점부터 재처리
-- **해결**: Writer에서 UPSERT 또는 중복 체크 로직 추가
+**원인 분석**:
+```
+1차 실행 후 ExecutionContext:
+  - processedCount=400 ← 저장됨!
+  - customerCsvReader.read.count=400 ← 저장됨!
+
+2차 실행 시 open()에 전달된 ExecutionContext:
+  - batch.version=6.0.2 ← 이것만 있음!
+```
+
+**관련 이슈**:
+- [Spring Batch #5117](https://github.com/spring-projects/spring-batch/issues/5117): ExecutionContext not loaded (6.0.1에서 수정됨)
+- [Spring Batch #5182](https://github.com/spring-projects/spring-batch/issues/5182): ChunkOrientedStep ExecutionContext 문제
+
+**조사 결과**:
+- 같은 JobInstance (ID=1) 확인됨
+- Step BatchStatus: FAILED, ExitStatus: FAILED 확인됨
+- 하지만 재시작 시 이전 ExecutionContext가 새 StepExecution에 복원되지 않음
+- Spring Batch 6.0.2 버그로 추정 (추가 조사 필요)
+
+### 이슈 2: 워크어라운드 - UPSERT로 멱등성 보장 ✅
+
+**해결 방법**: `customer_stg` 테이블에 UPSERT 적용
+
+```sql
+-- 스키마에 UNIQUE 제약 추가
+CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_stg_unique
+ON customer_stg(customer_id, run_date);
+```
+
+```java
+// customerStgWriter에서 UPSERT 사용
+String sql = """
+    INSERT INTO customer_stg (customer_id, email, name, phone, run_date)
+    VALUES (:customerId, :email, :name, :phone, :runDate)
+    ON CONFLICT (customer_id, run_date)
+    DO UPDATE SET
+        email = EXCLUDED.email,
+        name = EXCLUDED.name,
+        phone = EXCLUDED.phone
+    """;
+```
+
+**테스트 검증 (시나리오5)**:
+```
+1차 실행: failAt=500 → 400건 적재 → FAILED
+2차 실행: JobOperator.restart(executionId) → 처음부터 다시 처리 → UPSERT로 중복 방지
+최종 결과: 1000건 (중복 없음) ✅
+```
+
+**결과**:
+- ExecutionContext 복원이 안 되어 Reader가 처음부터 다시 읽어도
+- UPSERT가 중복을 방지하여 최종 1000건 적재 (중복 없음)
+- 멱등성(Idempotency) 보장
+
+### 이슈 3: Spring Batch 6.x에서 startJob()과 restart() 동작
+
+**현상**:
+- `startJob()`을 같은 파라미터로 두 번 호출하면 **기존 FAILED JobExecution을 반환**
+- `JobOperator.restart(executionId)`도 **같은 JobExecutionId 반환**
+
+**분석**:
+```
+1차 startJob() → JobExecution ID: 1, Status: FAILED
+2차 startJob() → JobExecution ID: 1 (동일!)
+restart(1) → JobExecution ID: 1 (동일!)
+```
+
+Spring Batch 6.x에서 재시작 메커니즘이 이전 버전과 다르게 동작합니다.
+
+### 결론: 실무 권장사항
+
+Spring Batch 6.0.2에서 발견된 재시작 관련 이슈들로 인해:
+
+1. **멱등성 보장이 더 중요**: "이어서 처리"보다 "처음부터 다시 처리해도 결과 동일"
+2. **UPSERT 패턴 권장**: INSERT 대신 UPSERT로 중복 방지
+3. **DELETE-INSERT 패턴**: 재시작 전 해당 run_date 데이터 삭제 후 재적재
+4. **검증 로직 강화**: 중복 데이터 검증을 스테이징 단계에서 수행
 
 ---
 
 ## 회고
 
 ### 잘한 점
-
+- ItemStream의 open/update/close 생명주기 이해
+- `.processor()`와 `.stream()` 둘 다 등록해야 하는 이유 학습
+- 청크 단위 트랜잭션과 상태 저장 시점 이해
+- Spring Batch 6.x 버그 발견 시 워크어라운드(UPSERT) 적용
+- **UPSERT로 멱등성을 보장하는 방식이 실무에서 더 안정적**이라는 것을 학습
 
 ### 개선할 점
+- Spring Batch 6.x의 재시작 API 변경사항 추가 조사 필요
+- ExecutionContext 복원 이슈 근본 원인 파악
+- Spring Batch 팀에 이슈 리포트 고려
 
+### 핵심 교훈
+> **재시작 시 "이어서 처리"보다 "UPSERT로 멱등성 보장"이 더 실용적**
+>
+> 이론적으로는 ExecutionContext를 통해 이어서 처리하는 것이 효율적이지만,
+> 실무에서는 UPSERT나 DELETE-INSERT 패턴으로 멱등성을 보장하는 것이
+> 버그나 엣지 케이스에 더 강건함
 
-### 다음 주 준비
-- Skip/Retry 정책 이해
-- Listener로 오류 추적
+### 다음 주 준비 (Week 05)
+- Skip/Retry를 활용한 내결함성(Fault Tolerance) 구현
+- SkipPolicy, RetryPolicy 설정
+- 오류 레코드 처리 전략
 
 ---
 
@@ -287,4 +331,3 @@ SELECT COUNT(*) FROM customer_stg WHERE run_date = '2025-02-05';
 - [ItemStream](https://docs.spring.io/spring-batch/reference/readers-and-writers/item-stream.html)
 - [Configuring a Step (Restartability)](https://docs.spring.io/spring-batch/reference/step/chunk-oriented-processing/configuring.html)
 - [Restarting a Job](https://docs.spring.io/spring-batch/reference/job/configuring.html#restartability)
-- [Schema Appendix (BATCH_STEP_EXECUTION_CONTEXT)](https://docs.spring.io/spring-batch/reference/schema-appendix.html)

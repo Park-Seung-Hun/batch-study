@@ -61,6 +61,11 @@ new JobParametersBuilder()
     .toJobParameters();
 ```
 
+### 테스트 코드 규칙
+- **`System.out.println` 금지**: 테스트 코드에 디버그용 출력문 사용하지 않음
+- 디버깅이 필요한 경우 `System.out.println`을 임시로 사용할 수 있으나, **커밋 전 반드시 제거**
+- 테스트 결과는 `assertThat().as("설명")` 형태로 assertion 메시지에 포함
+
 ## Spring Batch 6.x 참고사항
 
 ### 패키지 구조 변경 (5.x → 6.x)

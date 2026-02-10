@@ -3,6 +3,7 @@ package com.test.batchstudy.config;
 import com.test.batchstudy.domain.Customer;
 import com.test.batchstudy.domain.CustomerCsv;
 import com.test.batchstudy.domain.CustomerStg;
+import com.test.batchstudy.processor.RestartableItemProcessor;
 import com.test.batchstudy.tasklet.ErrorIsolateTasklet;
 import com.test.batchstudy.tasklet.StatsTasklet;
 import com.test.batchstudy.tasklet.ValidateTasklet;
@@ -66,11 +67,11 @@ public class CustomerImportJobConfig {
         return new JobBuilder("customerImportJob", jobRepository)
                 .start(csvToStagingStep)
                 .next(validateStep)
-                    .on("COMPLETED").to(stagingToTargetStep)
+                .on("COMPLETED").to(stagingToTargetStep)
                 .from(validateStep)
-                    .on("INVALID").to(errorIsolateStep)
+                .on("INVALID").to(errorIsolateStep)
                 .from(validateStep)
-                    .on("*").fail()
+                .on("*").fail()
                 // 양쪽 경로 모두 statsStep으로 합류
                 .from(stagingToTargetStep).on("*").to(statsStep)
                 .from(errorIsolateStep).on("*").to(statsStep)
@@ -91,16 +92,24 @@ public class CustomerImportJobConfig {
                 .build();
     }
 
+    /**
+     * CSV → Staging Step (Week 04: 재시작 지원)
+     * <p>
+     * RestartableItemProcessor는 ItemStream을 구현하여 처리 상태를 저장합니다.
+     * Step에 .stream(processor)를 추가해야 ExecutionContext에 상태가 저장됩니다.
+     */
     @Bean
     public Step csvToStagingStep(JobRepository jobRepository,
                                  FlatFileItemReader<CustomerCsv> customerCsvReader,
-                                 ItemProcessor<CustomerCsv, CustomerStg> customerCsvProcessor,
+                                 RestartableItemProcessor restartableItemProcessor,
                                  JdbcBatchItemWriter<CustomerStg> customerStgWriter) {
         return new StepBuilder("csvToStagingStep", jobRepository)
                 .<CustomerCsv, CustomerStg>chunk(CHUNK_SIZE)
                 .reader(customerCsvReader)
-                .processor(customerCsvProcessor)
+                .processor(restartableItemProcessor)
                 .writer(customerStgWriter)
+                .stream(customerCsvReader)  // Reader 상태 저장 명시적 등록
+                .stream(restartableItemProcessor)
                 .build();
     }
 
@@ -123,47 +132,36 @@ public class CustomerImportJobConfig {
                 .delimited()
                 .names("customerId", "email", "name", "phone")
                 .targetType(CustomerCsv.class)
+                .saveState(true)
                 .build();
     }
 
-    /**
-     * CustomerCsv → CustomerStg 변환 Processor
-     * <p>
-     * CSV 원본 데이터에 runDate를 추가하여 스테이징용 DTO로 변환합니다.
-     */
-    @Bean
-    @StepScope
-    public ItemProcessor<CustomerCsv, CustomerStg> customerCsvProcessor(
-            @Value("#{jobParameters['runDate']}") String runDate) {
-        log.info("Creating customerCsvProcessor with runDate: {}", runDate);
-
-        LocalDate parsedRunDate = LocalDate.parse(runDate);
-
-        // ItemProcessor<I, O>: I를 받아서 O를 반환하는 함수형 인터페이스
-        // csv (입력) -> CustomerStg (출력)
-        return csv -> new CustomerStg(
-                csv.customerId(),
-                csv.email(),
-                csv.name(),
-                csv.phone(),
-                parsedRunDate
-        );
-    }
+    // Week 04: customerCsvProcessor는 RestartableItemProcessor로 대체됨
+    // RestartableItemProcessor는 @Component + @StepScope로 자동 등록됨
 
     /**
-     * CustomerStg를 customer_stg 테이블에 Batch INSERT하는 Writer
+     * CustomerStg를 customer_stg 테이블에 UPSERT하는 Writer
+     *
+     * Week 04: 재시작 시 UPSERT로 멱등성 보장
+     * - (customer_id, run_date) 복합 UNIQUE 제약으로 중복 방지
+     * - 같은 데이터를 다시 처리해도 최종 결과는 동일
      */
     @Bean
     public JdbcBatchItemWriter<CustomerStg> customerStgWriter() {
         String sql = """
                 INSERT INTO customer_stg (customer_id, email, name, phone, run_date)
                 VALUES (:customerId, :email, :name, :phone, :runDate)
+                ON CONFLICT (customer_id, run_date)
+                DO UPDATE SET
+                    email = EXCLUDED.email,
+                    name = EXCLUDED.name,
+                    phone = EXCLUDED.phone
                 """;
 
         return new JdbcBatchItemWriterBuilder<CustomerStg>()
                 .dataSource(dataSource)
                 .sql(sql)
-                .beanMapped()  // DTO 필드명을 Named Parameter로 자동 매핑
+                .beanMapped()
                 .build();
     }
 

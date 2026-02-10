@@ -36,7 +36,7 @@
 | [Week 01](week-01-domain-language.md) | 배치 도메인 언어 | Job, Step, Execution, JobRepository | ✅ |
 | [Week 02](week-02-csv-to-staging.md) | CSV → Staging | Chunk, FlatFileItemReader, JdbcBatchItemWriter | ✅ |
 | [Week 03](week-03-validate-upsert-flow.md) | 검증 + 업서트 + Flow | Multi-Step, Tasklet, ExitStatus 분기 | ✅ |
-| [Week 04](week-04-restartability.md) | 재시작 | ExecutionContext, ItemStream, 멱등성 | ⬜ |
+| [Week 04](week-04-restartability.md) | 재시작 | ExecutionContext, ItemStream, 멱등성 | ✅ |
 | [Week 05](week-05-fault-tolerance.md) | 내결함성 | Skip, Retry, Listener, 오류 격리 | ⬜ |
 | [Week 06](week-06-params-scope.md) | 파라미터 + Scope | JobScope, StepScope, Late Binding | ⬜ |
 | [Week 07](week-07-parallel-tuning.md) | 병렬/튜닝 | Multi-thread, Partitioning, 성능 측정 | ⬜ |

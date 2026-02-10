@@ -12,6 +12,10 @@ CREATE TABLE IF NOT EXISTS customer_stg (
 CREATE INDEX IF NOT EXISTS idx_customer_stg_run_date ON customer_stg(run_date);
 CREATE INDEX IF NOT EXISTS idx_customer_stg_customer_id ON customer_stg(customer_id);
 
+-- UPSERT를 위한 복합 UNIQUE 인덱스 (재시작 시 멱등성 보장)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_customer_stg_unique
+ON customer_stg(customer_id, run_date);
+
 -- 타깃 테이블: 정제/업서트 결과
 CREATE TABLE IF NOT EXISTS customer (
     id              BIGSERIAL PRIMARY KEY,

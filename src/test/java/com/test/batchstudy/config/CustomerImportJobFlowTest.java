@@ -99,25 +99,23 @@ class CustomerImportJobFlowTest {
         // when
         JobExecution execution = jobOperatorTestUtils.startJob(params);
 
-        // then - Job이 FAILED 상태로 종료
+        // then - Week 05: Processor Skip으로 stg 3건, StatsTasklet이 오류 감지 → FAILED
+        // Processor Skip: C002 (@ 없음), 빈 customerId → 2건 Skip (customer_err 기록)
+        // stg 도달: C001, C003, C005(UPSERT) = 3건
+        // ValidateTasklet: 중복 없음 → COMPLETED → stagingToTargetStep 실행
+        // stagingReader 필터: C005 중복 제외 → customer 1건 (C001만? 또는 C001+C003)
+        // StatsTasklet: error 존재 → ExitStatus.FAILED
         assertThat(execution.getStatus()).isEqualTo(BatchStatus.FAILED);
 
-        // Step 실행 순서 확인 (INVALID 경로)
+        // Step 실행 순서 확인 (COMPLETED 경로 + statsStep FAILED)
         Collection<StepExecution> stepExecutions = execution.getStepExecutions();
         assertThat(stepExecutions).extracting("stepName")
-                .containsExactly("csvToStagingStep", "validateStep", "errorIsolateStep", "statsStep");
+                .containsExactly("csvToStagingStep", "validateStep", "stagingToTargetStep", "statsStep");
 
-        // 오류 테이블에 격리된 레코드 확인
-        // 오류 조건: 잘못된 이메일(1건) + 중복 customer_id(2건) = 3건
-        // (CSV에서 빈 문자열 ""은 NULL이 아니므로 NULL 체크에 걸리지 않음)
-        Integer errorCount = jdbcTemplate.queryForObject(
+        // Processor Skip 2건 customer_err에 기록
+        Integer skipErrCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM customer_err WHERE run_date = '2025-02-11'", Integer.class);
-        assertThat(errorCount).isEqualTo(3);
-
-        // customer 테이블에는 적재되지 않아야 함 (INVALID 경로이므로)
-        Integer customerCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM customer", Integer.class);
-        assertThat(customerCount).isEqualTo(0);
+        assertThat(skipErrCount).as("Processor Skip 2건").isEqualTo(2);
     }
 
     @Test
@@ -204,15 +202,15 @@ class CustomerImportJobFlowTest {
         // when
         JobExecution execution = jobOperatorTestUtils.startJob(params);
 
-        // then - FAILED지만 집계는 기록됨
+        // then - Week 05: StatsTasklet이 오류 감지 → FAILED
         assertThat(execution.getStatus()).isEqualTo(BatchStatus.FAILED);
 
-        // 집계 테이블 확인 (statsStep은 failStep 전에 실행됨)
+        // StatsTasklet 집계 확인
         var stats = jdbcTemplate.queryForMap(
                 "SELECT total_count, success_count, error_count FROM customer_daily_stats WHERE run_date = '2025-02-15'");
 
-        assertThat(stats.get("total_count")).isEqualTo(6);  // 총 6건
-        assertThat(stats.get("error_count")).isEqualTo(3);  // 오류 3건 (이메일1 + 중복2)
-        assertThat(stats.get("success_count")).isEqualTo(3); // 성공 3건 (6-3)
+        assertThat(stats.get("total_count")).as("stg 적재 건수").isEqualTo(3);
+        assertThat(stats.get("success_count")).as("customer에 적재된 건수").isEqualTo(1);
+        assertThat(stats.get("error_count")).as("오류 건수 (stg-success)").isEqualTo(2);
     }
 }

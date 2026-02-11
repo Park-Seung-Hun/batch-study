@@ -1,0 +1,16 @@
+customerId,email,name,phone
+C001,valid1@example.com,정상1,010-1111-1111
+C002,,빈이메일1,010-2222-2222
+C003,no-at-sign,골뱅이없음1,010-3333-3333
+,missing-id-1@example.com,빈아이디1,010-4444-4444
+C005,,빈이메일2,010-5555-5555
+C006,invalid2,골뱅이없음2,010-6666-6666
+,missing-id-2@example.com,빈아이디2,010-7777-7777
+C008,valid2@example.com,정상2,010-8888-8888
+C009,,빈이메일3,010-9999-9999
+C010,no-at-3,골뱅이없음3,010-1010-1010
+,missing-id-3@example.com,빈아이디3,010-1111-1111
+C012,valid3@example.com,정상3,010-1212-1212
+C013,,빈이메일4,010-1313-1313
+C014,invalid-email-4,골뱅이없음4,010-1414-1414
+,missing-id-4@example.com,빈아이디4,010-1515-1515

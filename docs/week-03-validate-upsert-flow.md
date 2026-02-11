@@ -298,8 +298,9 @@ WARN  c.test.batchstudy.tasklet.StatsTasklet : 오류 레코드 존재 → ExitS
   - customer_daily_stats UPSERT
 
 ### Step Flow 구현
-- [x] validateStep COMPLETED → stagingToTargetStep → statsStepValid
-- [x] validateStep INVALID → errorIsolateStep → statsStepInvalid → failStep → FAILED
+- [x] validateStep COMPLETED → stagingToTargetStep → statsStep → COMPLETED
+- [x] validateStep INVALID → errorIsolateStep → statsStep → FAILED
+- [x] statsStep에서 errorCount > 0이면 ExitStatus.FAILED 설정
 - [x] ExitStatus 기반 분기 구현 (Decider 대신)
 
 ### UPSERT Writer 구현
@@ -315,34 +316,205 @@ WARN  c.test.batchstudy.tasklet.StatsTasklet : 오류 레코드 존재 → ExitS
 
 ---
 
-## 예상 코드 구조
+## Week 02 → Week 03 변경 비교
 
-### Tasklet 예시
+| 항목 | Week 02 | Week 03 |
+|------|---------|---------|
+| Job 구조 | 단일 Step (`csvToStagingStep`) | 5 Step Flow (분기 + 합류) |
+| Processor | 람다 (`CustomerCsv → CustomerStg`) | 동일 (Week 04에서 변경) |
+| Writer (stg) | INSERT | INSERT (동일, UPSERT는 Week 04) |
+| Writer (target) | 없음 | UPSERT (`ON CONFLICT customer_id`) |
+| 검증 | 없음 | `ValidateTasklet` (SQL 기반 3종 검사) |
+| 오류 처리 | 없음 | `ErrorIsolateTasklet` → `customer_err` |
+| 집계 | 없음 | `StatsTasklet` → `customer_daily_stats` |
+| Job 종료 | 항상 COMPLETED | errorCount 기반 COMPLETED/FAILED |
+| 테스트 API | `JobLauncherTestUtils` (deprecated) | `JobOperatorTestUtils` (현행) |
+
+---
+
+## 구현 코드
+
+### ValidateTasklet.java
+
+스테이징 데이터의 유효성을 SQL로 검증하고, 오류 존재 시 `ExitStatus("INVALID")`를 설정하여 Flow 분기의 기준을 제공한다.
+
+`@StepScope` + `@Value` Late Binding으로 `runDate`를 주입받아, 해당 실행일의 데이터만 검증한다. 검증 SQL은 3가지 조건(이메일 형식, NULL, 중복)을 `OR`로 결합하여 **단일 쿼리**로 오류 건수를 집계한다.
+
 ```java
+@Slf4j
 @Component
+@StepScope
+@RequiredArgsConstructor
 public class ValidateTasklet implements Tasklet {
 
-    @Override
-    public RepeatStatus execute(StepContribution contribution,
-                                ChunkContext chunkContext) throws Exception {
-        // 검증 로직
-        long invalidCount = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM customer_stg WHERE email NOT LIKE '%@%'",
-            Long.class
-        );
+    private final JdbcTemplate jdbcTemplate;
 
-        if (invalidCount > 0) {
+    @Value("#{jobParameters['runDate']}")
+    private String runDate;
+
+    @Override
+    public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) throws Exception {
+        log.info("=== ValidateTasklet 시작: runDate={} ===", runDate);
+
+        LocalDate parsedRunDate = LocalDate.parse(runDate);
+        int errorCount = validateStagingData(parsedRunDate);
+
+        if (errorCount > 0) {
+            log.warn("검증 실패: {} 건의 오류 발견", errorCount);
             contribution.setExitStatus(new ExitStatus("INVALID"));
         } else {
+            log.info("검증 성공: 모든 데이터 유효");
             contribution.setExitStatus(ExitStatus.COMPLETED);
         }
 
         return RepeatStatus.FINISHED;
     }
+
+    private int validateStagingData(LocalDate runDate) {
+        String sql = "SELECT COUNT(*) " +
+                "FROM customer_stg " +
+                "WHERE run_date = ? " +
+                "AND (email NOT LIKE '%@%' " +
+                "OR customer_id IS NULL " +
+                "OR customer_id IN (" +
+                "    SELECT customer_id FROM customer_stg " +
+                "    WHERE run_date = ? " +
+                "    GROUP BY customer_id HAVING COUNT(*) > 1" +
+                "))";
+
+        return jdbcTemplate.queryForObject(sql, Integer.class, runDate, runDate);
+    }
+}
+```
+
+### ErrorIsolateTasklet.java
+
+ValidateTasklet에서 INVALID 판정 시에만 실행된다. 오류 레코드를 `customer_stg`에서 찾아 `customer_err`로 INSERT하며, `CASE` 표현식으로 오류 원인별 메시지를 자동 분류한다.
+
+검증 조건이 ValidateTasklet과 동일해야 하므로, SQL의 `WHERE` 절을 일치시킨 점이 핵심이다.
+
+```java
+@Slf4j
+@Component
+@StepScope
+@RequiredArgsConstructor
+public class ErrorIsolateTasklet implements Tasklet {
+
+    private final JdbcTemplate jdbcTemplate;
+
+    @Value("#{jobParameters['runDate']}")
+    private String runDate;
+
+    @Override
+    public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) throws Exception {
+        log.info("=== ErrorIsolateTasklet 시작: runDate={} ===", runDate);
+
+        LocalDate parsedRunDate = LocalDate.parse(runDate);
+        int isolatedCount = isolateErrorRecords(parsedRunDate);
+
+        log.info("오류 레코드 {} 건을 customer_err로 이동 완료", isolatedCount);
+
+        return RepeatStatus.FINISHED;
+    }
+
+    private int isolateErrorRecords(LocalDate runDate) {
+        String sql = """
+            INSERT INTO customer_err (customer_id, email, name, phone, error_message, run_date)
+            SELECT
+                customer_id, email, name, phone,
+                CASE
+                    WHEN customer_id IS NULL THEN 'customer_id is NULL'
+                    WHEN email NOT LIKE '%@%' THEN 'Invalid email format'
+                    ELSE 'Duplicate customer_id'
+                END AS error_message,
+                run_date
+            FROM customer_stg
+            WHERE run_date = ?
+              AND (
+                email NOT LIKE '%@%'
+                OR customer_id IS NULL
+                OR customer_id IN (
+                    SELECT customer_id FROM customer_stg
+                    WHERE run_date = ?
+                    GROUP BY customer_id HAVING COUNT(*) > 1
+                )
+              )
+            """;
+
+        return jdbcTemplate.update(sql, runDate, runDate);
+    }
+}
+```
+
+### StatsTasklet.java
+
+정상 경로와 오류 경로 **양쪽에서 합류**하여 실행된다. `customer_stg` 전체 건수에서 `customer_err` 오류 건수를 빼 성공 건수를 계산하고, `customer_daily_stats`에 UPSERT한다.
+
+`errorCount > 0`이면 `ExitStatus.FAILED`를 설정하여, Job Flow에서 최종 FAILED로 처리되게 한다. 이렇게 **통계 집계와 Job 종료 상태 결정을 한 곳에서 처리**하는 것이 핵심 설계이다.
+
+```java
+@Slf4j
+@Component
+@StepScope
+@RequiredArgsConstructor
+public class StatsTasklet implements Tasklet {
+
+    private final JdbcTemplate jdbcTemplate;
+
+    @Value("#{jobParameters['runDate']}")
+    private String runDate;
+
+    @Override
+    public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) throws Exception {
+        log.info("=== StatsTasklet 시작: runDate={} ===", runDate);
+
+        LocalDate parsedRunDate = LocalDate.parse(runDate);
+
+        int totalCount = countStagingRecords(parsedRunDate);
+        int errorCount = countErrorRecords(parsedRunDate);
+        int successCount = totalCount - errorCount;
+
+        saveStats(parsedRunDate, totalCount, successCount, errorCount);
+
+        log.info("통계 저장 완료 - 전체: {}, 성공: {}, 실패: {}", totalCount, successCount, errorCount);
+
+        if (errorCount > 0) {
+            log.warn("오류 레코드 존재 → ExitStatus.FAILED 설정");
+            contribution.setExitStatus(ExitStatus.FAILED);
+        }
+
+        return RepeatStatus.FINISHED;
+    }
+
+    private int countStagingRecords(LocalDate runDate) {
+        String sql = "SELECT COUNT(*) FROM customer_stg WHERE run_date = ?";
+        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, runDate);
+        return count != null ? count : 0;
+    }
+
+    private int countErrorRecords(LocalDate runDate) {
+        String sql = "SELECT COUNT(*) FROM customer_err WHERE run_date = ?";
+        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, runDate);
+        return count != null ? count : 0;
+    }
+
+    private void saveStats(LocalDate runDate, int totalCount, int successCount, int errorCount) {
+        String sql = """
+            INSERT INTO customer_daily_stats (run_date, total_count, success_count, error_count)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT (run_date) DO UPDATE SET
+                total_count = EXCLUDED.total_count,
+                success_count = EXCLUDED.success_count,
+                error_count = EXCLUDED.error_count
+            """;
+
+        jdbcTemplate.update(sql, runDate, totalCount, successCount, errorCount);
+    }
 }
 ```
 
 ### Job Flow 구성 (ExitStatus 기반 분기 + 합류)
+
 ```java
 @Bean
 public Job customerImportJob(JobRepository jobRepository,
@@ -375,14 +547,21 @@ public Job customerImportJob(JobRepository jobRepository,
 > 2. 양쪽 경로가 `statsStep`으로 **합류**
 > 3. `statsStep`에서 오류 건수 확인 → `ExitStatus.FAILED` 설정 시 Job FAILED
 
+### 설계 판단 근거
+
+**ExitStatus vs JobExecutionDecider**: Tasklet 내부에서 검증 결과를 바로 ExitStatus로 설정하는 것이 자연스럽다. Decider는 별도 Bean이 필요하고 Step 외부에서 판단해야 하므로, 검증-분기가 한 Tasklet에서 완결되는 경우 ExitStatus가 적합하다.
+
+**경로 합류 패턴**: 두 분기 경로(COMPLETED/INVALID)가 `statsStep`으로 합류한다. `statsStep`에서 `errorCount`를 확인하여 Job 최종 상태를 한 곳에서 결정하므로, FAILED 처리 로직이 분산되지 않아 유지보수에 유리하다.
+
 ### UPSERT SQL (PostgreSQL)
 ```sql
-INSERT INTO customer (customer_id, email, name, phone, created_at, updated_at)
-VALUES (:customerId, :email, :name, :phone, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-ON CONFLICT (customer_id) DO UPDATE SET
-    email = EXCLUDED.email,
-    name = EXCLUDED.name,
-    phone = EXCLUDED.phone,
+INSERT INTO customer (customer_id, email, name, phone)
+VALUES (:customerId, :email, :name, :phone)
+ON CONFLICT (customer_id)
+DO UPDATE SET
+    email = :email,
+    name = :name,
+    phone = :phone,
     updated_at = CURRENT_TIMESTAMP
 ```
 
@@ -463,6 +642,22 @@ SELECT * FROM customer_daily_stats WHERE run_date = '2025-02-05';
 
 ---
 
+## 변경된 파일
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `config/CustomerImportJobConfig.java` | 멀티 Step Flow 구성 (5 Step), `stagingReader`, `stagingToCustomerProcessor`, `customerUpsertWriter` 추가 |
+| `domain/Customer.java` | 타깃 테이블 매핑 record 신규, `fromStaging()` 팩토리 메서드 |
+| `tasklet/ValidateTasklet.java` | 스테이징 데이터 검증 Tasklet 신규 (이메일/NULL/중복 검사, ExitStatus 분기) |
+| `tasklet/ErrorIsolateTasklet.java` | 오류 레코드 격리 Tasklet 신규 (CASE로 error_message 분류) |
+| `tasklet/StatsTasklet.java` | 일별 집계 Tasklet 신규 (UPSERT + ExitStatus.FAILED 조건) |
+| `input/customers_invalid_20250210.csv` | 오류 테스트용 CSV 신규 (6건: 정상3 + 오류3) |
+| `test/CustomerImportJobFlowTest.java` | Flow 분기 테스트 5 시나리오 신규 |
+| `test/CustomerImportJobTest.java` | deprecated API → `JobOperatorTestUtils` 교체 |
+| `test/DomainStudyJobTest.java` | deprecated API → `JobOperatorTestUtils` 교체 |
+
+---
+
 ## 트러블슈팅 로그
 
 ### 이슈 1: Spring Batch 6.x에서 `fail()` 메서드 사용 불가
@@ -473,7 +668,8 @@ SELECT * FROM customer_daily_stats WHERE run_date = '2025-02-05';
 ### 이슈 2: Flow 분기 후에도 다른 경로의 Step이 실행됨
 - **현상**: VALID 경로에서도 failStep이 실행됨
 - **원인**: Flow의 각 분기가 명시적으로 종료되지 않아 다음 Step으로 흐름 이동
-- **해결**: 각 경로에서 별도의 statsStep Bean 사용 (statsStepValid, statsStepInvalid)
+- **초기 시도**: 각 경로에서 별도의 statsStep Bean 사용 (statsStepValid, statsStepInvalid)
+- **최종 해결**: 양쪽 경로를 단일 `statsStep`으로 합류시키고, `statsStep` 내부에서 `errorCount > 0` 조건으로 `ExitStatus.FAILED` 설정. Flow에서 `.from(statsStep).on("FAILED").fail()`로 처리
 
 ### 이슈 3: CSV에서 빈 필드가 NULL이 아닌 빈 문자열로 읽힘
 - **현상**: `customer_id IS NULL` 검증이 빈 customer_id를 감지하지 못함

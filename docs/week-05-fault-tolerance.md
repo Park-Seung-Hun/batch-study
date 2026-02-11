@@ -46,6 +46,18 @@
 | `onSkipInProcess(T, Throwable)` | Processor에서 Skip 발생 시 | 원본 아이템 + 예외 |
 | `onSkipInWrite(S, Throwable)` | Writer에서 Skip 발생 시 | 변환된 아이템 + 예외 |
 
+### RetryListener
+> 한 줄 정의: Retry 발생 시 콜백을 받아 재시도 상황을 로깅하는 Listener
+
+| 메서드 | 시점 | 로그 레벨 | 비고 |
+|--------|------|-----------|------|
+| `onRetryableExecution(RetryPolicy, Retryable, RetryState)` | 매 실행마다 호출 | WARN (retryCount > 0일 때만) | 첫 시도에는 예외 없으므로 retryCount 체크 필수 |
+| `onRetryPolicyExhaustion(RetryPolicy, Retryable, RetryException)` | 재시도 횟수 소진 시 | ERROR | 최종 실패 원인 로깅 |
+
+> **주의**: `onRetryableExecution`은 첫 시도(retryCount=0)에서도 호출된다. 이때 `state.getLastException()`을 호출하면 `IllegalStateException("No exception recorded")`이 발생하므로, 반드시 `state.getRetryCount() > 0`을 먼저 확인해야 한다.
+
+> **패키지**: `org.springframework.core.retry.RetryListener` (Spring Framework 7.x — NOT `org.springframework.retry`)
+
 ---
 
 ## 내결함성 적용 전후 비교
@@ -158,6 +170,40 @@ public class ErrorIsolationSkipListener implements SkipListener<CustomerCsv, Cus
 
 **`insertErr` 오버로딩**: Read Skip은 아이템 정보가 없으므로 null로 채우고, Process/Write Skip은 아이템 정보를 포함하여 기록한다.
 
+### 4. RetryLoggingListener 구현
+
+재시도 발생 시 WARN 로깅, 재시도 소진 시 ERROR 로깅을 수행하는 Listener이다.
+Retry는 일시적 오류에 대한 자동 복구이므로, 성공하면 기록이 불필요하여 DB 저장 없이 로깅만 수행한다.
+
+```java
+// RetryLoggingListener.java
+
+@Slf4j
+@Component
+public class RetryLoggingListener implements RetryListener {
+
+    @Override
+    public void onRetryableExecution(RetryPolicy policy, Retryable<?> retryable, RetryState state) {
+        if (state.getRetryCount() > 0) {
+            log.warn("Retry attempt #{} — exception: {}",
+                    state.getRetryCount(),
+                    state.getLastException().getMessage());
+        }
+    }
+
+    @Override
+    public void onRetryPolicyExhaustion(RetryPolicy policy, Retryable<?> retryable, RetryException ex) {
+        log.error("Retry exhausted after {} attempts — cause: {}",
+                ex.getRetryCount(),
+                ex.getCause() != null ? ex.getCause().getMessage() : ex.getMessage());
+    }
+}
+```
+
+**`retryCount > 0` 가드가 필수인 이유**: `onRetryableExecution`은 첫 시도(retryCount=0)에서도 호출된다.
+이때 `state.getLastException()`을 호출하면 아직 기록된 예외가 없어 `IllegalStateException("No exception recorded")`이 발생한다.
+이 가드 없이는 모든 정상 실행에서 Step이 FAILED된다.
+
 ### 3. csvToStagingStep 내결함성 설정 (`CustomerImportJobConfig`)
 
 ```java
@@ -181,6 +227,7 @@ public Step csvToStagingStep(JobRepository jobRepository,
             .skipListener(errorIsolationSkipListener) // SkipListener 등록 (주의: .listener() 아님!)
             .retry(DeadlockLoserDataAccessException.class) // Retry 대상 예외
             .retryLimit(3)                           // 최대 3회 재시도
+            .retryListener(retryLoggingListener)     // RetryListener 등록
             // ▲ Week 05 추가분
             .stream(customerCsvReader)
             .stream(restartableItemProcessor)
@@ -196,6 +243,7 @@ public Step csvToStagingStep(JobRepository jobRepository,
 | `skipListener(...)` | ErrorIsolationSkipListener | Skip 콜백으로 customer_err 기록 |
 | `retry(DeadlockLoserDataAccessException.class)` | - | DB 교착 상태 시 재시도 |
 | `retryLimit(3)` | 3 | 최대 3회 재시도 |
+| `retryListener(...)` | RetryLoggingListener | Retry 콜백으로 재시도 로깅 |
 
 ---
 
@@ -332,6 +380,24 @@ StatsTasklet은 `customer_err` 건수로 오류를 판단하므로, **Skip된 �
 | writeCount | 100 |
 | customer 테이블 | 100건 |
 
+### 시나리오 5: Retry 성공 (`RetryTest`)
+
+| 항목 | 기대값 |
+|------|--------|
+| 입력 | `customers_clean_6.csv` (6건 정상) |
+| Writer 동작 | 첫 write()만 DeadlockLoserDataAccessException → 이후 정상 |
+| Step 상태 | COMPLETED |
+| writeCount | 6 |
+| WRITE_CALL_COUNT | 2 (1회 실패 + 1회 성공) |
+
+### 시나리오 6: Retry 소진 (`RetryTest`)
+
+| 항목 | 기대값 |
+|------|--------|
+| 입력 | `customers_clean_6.csv` (6건 정상) |
+| Writer 동작 | 항상 DeadlockLoserDataAccessException (999회) |
+| Step 상태 | FAILED (retryLimit 초과) |
+
 ---
 
 ## 트러블슈팅 로그
@@ -381,6 +447,26 @@ public class ErrorIsolationSkipListener implements SkipListener<...> {
 | `@StepScope` + `skipListener()` | CGLIB 프록시 호환 문제 | **런타임 에러** |
 | `StepSynchronizationManager` + `skipListener()` | 프록시 없이 직접 접근 | **정상 동작** ✅ |
 
+### 이슈 4: `onRetryableExecution`에서 `IllegalStateException("No exception recorded")`
+
+- **현상**: `RetryLoggingListener` 추가 후 모든 Step이 FAILED — `state.getLastException()` 호출 시 예외
+- **원인**: `onRetryableExecution`은 첫 시도(retryCount=0)에서도 호출된다. 이때 아직 기록된 예외가 없어서 `RetryState.getLastException()`이 `IllegalStateException`을 던짐
+- **해결**: `state.getRetryCount() > 0` 가드 추가 — 실제 재시도(retryCount ≥ 1)에서만 로깅
+
+### 이슈 5: `retryPolicy(Duration.ZERO)` vs `.retry().retryLimit()` backoff 차이
+
+- **현상**: `.retry().retryLimit(3)` 사용 시 테스트가 수 분 동안 멈춤 (100건 데이터 기준)
+- **원인**: 기본 backoff 지연 + scan mode에서 개별 아이템마다 retry → 수백 번의 retry 발생
+- **해결**: 테스트에서 `RetryPolicy.builder().delay(Duration.ZERO).maxRetries(3).includes(...)` 사용하여 backoff 제거
+
+### Spring Batch 6.x RetryListener 등록 요약
+
+| API | 동작 | 비고 |
+|-----|------|------|
+| `.retryListener(RetryListener)` | RetryListener 등록 | `org.springframework.core.retry.RetryListener` 사용 |
+| `.retryPolicy(RetryPolicy)` | 커스텀 retry 정책 설정 | backoff, maxRetries 등 세밀 제어 가능 |
+| `.retry(Class).retryLimit(int)` | 간편 설정 (기본 backoff 포함) | 테스트에서는 느릴 수 있음 |
+
 ---
 
 ## Skip/Retry 동작 흐름
@@ -428,6 +514,9 @@ Chunk 전체 재시도 (Writer는 Chunk 단위)
 | `FaultToleranceTest.java` | **신규** | 내결함성 테스트 4개 시나리오 |
 | `customers_dirty_20250205.csv` | **신규** | 6건 (정상 3, 오류 3) |
 | `customers_very_dirty_20250205.csv` | **신규** | 15건 (정상 3, 오류 12) |
+| `RetryLoggingListener.java` | **신규** | RetryListener 구현, 재시도 WARN/ERROR 로깅 |
+| `RetryTest.java` | **신규** | Retry 통합 테스트 2개 시나리오 (Step 직접 빌드/실행 방식) |
+| `customers_clean_6.csv` | **신규** | 6건 정상 데이터 (Retry 테스트용) |
 
 ---
 

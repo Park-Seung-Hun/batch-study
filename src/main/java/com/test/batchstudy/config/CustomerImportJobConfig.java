@@ -4,6 +4,7 @@ import com.test.batchstudy.domain.Customer;
 import com.test.batchstudy.domain.CustomerCsv;
 import com.test.batchstudy.domain.CustomerStg;
 import com.test.batchstudy.listener.ErrorIsolationSkipListener;
+import com.test.batchstudy.listener.RetryLoggingListener;
 import com.test.batchstudy.processor.RestartableItemProcessor;
 import com.test.batchstudy.tasklet.ErrorIsolateTasklet;
 import com.test.batchstudy.tasklet.StatsTasklet;
@@ -113,7 +114,8 @@ public class CustomerImportJobConfig {
                                  FlatFileItemReader<CustomerCsv> customerCsvReader,
                                  RestartableItemProcessor restartableItemProcessor,
                                  JdbcBatchItemWriter<CustomerStg> customerStgWriter,
-                                 ErrorIsolationSkipListener errorIsolationSkipListener) {
+                                 ErrorIsolationSkipListener errorIsolationSkipListener,
+                                 RetryLoggingListener retryLoggingListener) {
         return new StepBuilder("csvToStagingStep", jobRepository)
                 .<CustomerCsv, CustomerStg>chunk(CHUNK_SIZE)
                 .reader(customerCsvReader)
@@ -125,6 +127,7 @@ public class CustomerImportJobConfig {
                 .skipListener(errorIsolationSkipListener)
                 .retry(DeadlockLoserDataAccessException.class)
                 .retryLimit(3)
+                .retryListener(retryLoggingListener)
                 .stream(customerCsvReader)
                 .stream(restartableItemProcessor)
                 .build();

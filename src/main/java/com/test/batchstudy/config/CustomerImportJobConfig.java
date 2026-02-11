@@ -3,6 +3,7 @@ package com.test.batchstudy.config;
 import com.test.batchstudy.domain.Customer;
 import com.test.batchstudy.domain.CustomerCsv;
 import com.test.batchstudy.domain.CustomerStg;
+import com.test.batchstudy.listener.ErrorIsolationSkipListener;
 import com.test.batchstudy.processor.RestartableItemProcessor;
 import com.test.batchstudy.tasklet.ErrorIsolateTasklet;
 import com.test.batchstudy.tasklet.StatsTasklet;
@@ -22,10 +23,12 @@ import org.springframework.batch.infrastructure.item.database.builder.JdbcBatchI
 import org.springframework.batch.infrastructure.item.database.builder.JdbcCursorItemReaderBuilder;
 import org.springframework.batch.infrastructure.item.file.FlatFileItemReader;
 import org.springframework.batch.infrastructure.item.file.builder.FlatFileItemReaderBuilder;
+import org.springframework.batch.infrastructure.item.validator.ValidationException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.FileSystemResource;
+import org.springframework.dao.DeadlockLoserDataAccessException;
 import org.springframework.jdbc.core.DataClassRowMapper;
 
 import javax.sql.DataSource;
@@ -93,22 +96,36 @@ public class CustomerImportJobConfig {
     }
 
     /**
-     * CSV → Staging Step (Week 04: 재시작 지원)
+     * CSV → Staging Step (Week 05: 내결함성 추가)
      * <p>
-     * RestartableItemProcessor는 ItemStream을 구현하여 처리 상태를 저장합니다.
-     * Step에 .stream(processor)를 추가해야 ExecutionContext에 상태가 저장됩니다.
+     * Week 04: 재시작 지원 (ItemStream)
+     * Week 05: Skip/Retry/Listener 추가
+     * <p>
+     * 내결함성 설정:
+     * - FlatFileParseException: CSV 파싱 오류 (Reader 레벨)
+     * - ValidationException: 비즈니스 검증 오류 (Processor 레벨)
+     * - skipLimit(10): 최대 10건까지 Skip 허용, 초과 시 Job FAILED
+     * - DeadlockLoserDataAccessException: DB 교착 상태 시 최대 3회 재시도
+     * - ErrorIsolationSkipListener: Skip된 레코드를 customer_err 테이블에 격리
      */
     @Bean
     public Step csvToStagingStep(JobRepository jobRepository,
                                  FlatFileItemReader<CustomerCsv> customerCsvReader,
                                  RestartableItemProcessor restartableItemProcessor,
-                                 JdbcBatchItemWriter<CustomerStg> customerStgWriter) {
+                                 JdbcBatchItemWriter<CustomerStg> customerStgWriter,
+                                 ErrorIsolationSkipListener errorIsolationSkipListener) {
         return new StepBuilder("csvToStagingStep", jobRepository)
                 .<CustomerCsv, CustomerStg>chunk(CHUNK_SIZE)
                 .reader(customerCsvReader)
                 .processor(restartableItemProcessor)
                 .writer(customerStgWriter)
-                .stream(customerCsvReader)  // Reader 상태 저장 명시적 등록
+                .faultTolerant()
+                .skip(ValidationException.class)
+                .skipLimit(10)
+                .skipListener(errorIsolationSkipListener)
+                .retry(DeadlockLoserDataAccessException.class)
+                .retryLimit(3)
+                .stream(customerCsvReader)
                 .stream(restartableItemProcessor)
                 .build();
     }

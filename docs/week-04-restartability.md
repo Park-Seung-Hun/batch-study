@@ -78,47 +78,88 @@ public interface ItemStream {
 
 ---
 
+## Week 03 → Week 04 변경 비교
+
+| 항목 | Week 03 | Week 04 |
+|------|---------|---------|
+| Processor | 람다 `@StepScope` (`CustomerCsv → CustomerStg`) | `RestartableItemProcessor` (`ItemProcessor` + `ItemStream`) |
+| 상태 저장 | 없음 | `ExecutionContext`에 `processedCount` 저장 |
+| Step 등록 | `.processor()` 만 | `.processor()` + `.stream()` 둘 다 필요 |
+| Writer (stg) | INSERT | UPSERT (`ON CONFLICT customer_id, run_date`) |
+| 스키마 | - | `customer_stg`에 `(customer_id, run_date)` UNIQUE 인덱스 추가 |
+| Reader | `saveState` 미설정 | `.saveState(true)` 명시 |
+| 재시작 | 불가 | `failAt` + restart + `effectiveFailAt` 패턴 |
+
+---
+
 ## 구현 코드
 
 ### RestartableItemProcessor.java
+
+`@RequiredArgsConstructor`로 `JdbcTemplate`을 생성자 주입받는다. `failAt`(강제 실패 지점)과 별도로 `effectiveFailAt` 필드를 두어, **재시작 시 failAt을 무시**하는 3단계 전략을 구현한다:
+
+1. `open()`: DB에 해당 `run_date` 데이터가 이미 존재하면 재시작으로 감지 → `effectiveFailAt = 0`
+2. `process()`: `effectiveFailAt` 기준으로 실패 판단 → 재시작 시에는 실패 없이 통과
+3. Writer의 UPSERT가 기존 데이터를 UPDATE하여 멱등성 보장
 
 ```java
 @Slf4j
 @Component
 @StepScope
+@RequiredArgsConstructor
 public class RestartableItemProcessor
         implements ItemProcessor<CustomerCsv, CustomerStg>, ItemStream {
 
     private static final String PROCESSED_COUNT_KEY = "processedCount";
+
+    private final JdbcTemplate jdbcTemplate;
+
     private int processedCount = 0;
 
     @Value("#{jobParameters['failAt'] ?: 0}")
     private int failAt;
 
+    /** 실제 적용될 failAt 값 (재시작 시 0으로 설정됨) */
+    private int effectiveFailAt;
+
     @Value("#{jobParameters['runDate']}")
     private String runDate;
 
     @Override
-    public void open(ExecutionContext executionContext) {
+    public void open(ExecutionContext executionContext) throws ItemStreamException {
         if (executionContext.containsKey(PROCESSED_COUNT_KEY)) {
             this.processedCount = executionContext.getInt(PROCESSED_COUNT_KEY);
             log.info("Resuming from processedCount: {}", this.processedCount);
         } else {
             log.info("Starting fresh - processedCount: 0");
         }
+
+        // 재시작 감지: DB에 이미 데이터가 있으면 재시작 상황
+        Integer existingCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM customer_stg WHERE run_date = ?",
+                Integer.class, Date.valueOf(runDate)
+        );
+
+        if (existingCount != null && existingCount > 0) {
+            this.effectiveFailAt = 0;
+            log.info("Restart detected - {} records already exist, disabling failAt", existingCount);
+        } else {
+            this.effectiveFailAt = this.failAt;
+            log.info("First execution - failAt={}", this.effectiveFailAt);
+        }
     }
 
     @Override
-    public void update(ExecutionContext executionContext) {
+    public void update(ExecutionContext executionContext) throws ItemStreamException {
         executionContext.putInt(PROCESSED_COUNT_KEY, this.processedCount);
         log.debug("Updated processedCount: {}", this.processedCount);
     }
 
     @Override
     public CustomerStg process(CustomerCsv csv) {
-        this.processedCount++;
-        if (failAt > 0 && processedCount == failAt) {
-            throw new RuntimeException("Forced failure at " + failAt);
+        this.processedCount += 1;
+        if (effectiveFailAt > 0 && processedCount == effectiveFailAt) {
+            throw new RuntimeException("Forced failure at " + effectiveFailAt);
         }
         LocalDate parsedRunDate = LocalDate.parse(runDate);
         return new CustomerStg(
@@ -127,8 +168,12 @@ public class RestartableItemProcessor
     }
 
     @Override
-    public void close() {
-        log.info("Closing - final processedCount: {}", processedCount);
+    public void close() throws ItemStreamException {
+        log.info("Closing RestartableItemProcessor - final processedCount: {}", processedCount);
+    }
+
+    public int getProcessedCount() {
+        return processedCount;
     }
 }
 ```
@@ -185,11 +230,37 @@ public JdbcBatchItemWriter<CustomerStg> customerStgWriter() {
 청크 2 (101-200) → update(200) → 커밋 ✓
 청크 3 (201-300) → update(300) → 커밋 ✓
 청크 4 (301-400) → update(400) → 커밋 ✓
-청크 5 (401-500) → 450에서 예외 → 롤백 ✗
+청크 5 (401-500) → 500에서 예외 → 롤백 ✗
 
 ExecutionContext에는 400이 저장됨
 재시작 시 401건부터 처리 (이론적으로)
 ```
+
+### 1차 실행 → FAILED → 2차 실행(restart) 전체 흐름
+
+```
+=== 1차 실행 (failAt=500) ===
+open(): DB에 0건 → effectiveFailAt=500 설정
+청크1 (1-100)   → INSERT 100건 → update(100) → 커밋 ✓
+청크2 (101-200) → INSERT 100건 → update(200) → 커밋 ✓
+청크3 (201-300) → INSERT 100건 → update(300) → 커밋 ✓
+청크4 (301-400) → INSERT 100건 → update(400) → 커밋 ✓
+청크5 (401-500) → 500에서 RuntimeException → 롤백 ✗
+→ DB: customer_stg 400건, Job FAILED
+
+=== 2차 실행 (restart, effectiveFailAt=0) ===
+open(): DB에 400건 존재 감지 → effectiveFailAt=0 설정 (failAt 무시)
+청크1 (1-100)   → UPSERT 100건 (기존 → UPDATE) → 커밋 ✓
+청크2 (101-200) → UPSERT 100건 (기존 → UPDATE) → 커밋 ✓
+청크3 (201-300) → UPSERT 100건 (기존 → UPDATE) → 커밋 ✓
+청크4 (301-400) → UPSERT 100건 (기존 → UPDATE) → 커밋 ✓
+청크5 (401-500) → UPSERT 100건 (신규 → INSERT) → 커밋 ✓
+...
+청크10 (901-1000) → UPSERT 100건 (신규 → INSERT) → 커밋 ✓
+→ DB: customer_stg 1000건 (중복 없음), Job COMPLETED
+```
+
+> **핵심**: 1차에서 커밋된 400건은 UPSERT의 `ON CONFLICT DO UPDATE`로 덮어쓰고, 나머지 600건은 새로 INSERT. `effectiveFailAt=0`이므로 실패 지점 없이 전체 통과.
 
 ---
 

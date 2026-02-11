@@ -243,6 +243,18 @@ public Job customerImportJob(JobRepository jobRepository, Step csvToStagingStep)
 
 ---
 
+## 변경된 파일
+
+| 파일 | 변경 내용 |
+|------|----------|
+| `config/CustomerImportJobConfig.java` | `csvToStagingStep`, `customerImportJob` 신규. Reader/Processor/Writer Bean 정의 |
+| `domain/CustomerCsv.java` | CSV 매핑용 record 신규 (4필드: customerId, email, name, phone) |
+| `domain/CustomerStg.java` | 스테이징 매핑용 record 신규 (5필드, runDate 추가) |
+| `input/customers_20250205.csv` | 100건 테스트 데이터 신규 |
+| `test/CustomerImportJobTest.java` | 적재 건수/READ_COUNT/COMMIT_COUNT 검증 테스트 3건 |
+
+---
+
 ## 실행 방법
 
 ```bash

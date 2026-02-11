@@ -9,6 +9,7 @@ import org.springframework.batch.infrastructure.item.ExecutionContext;
 import org.springframework.batch.infrastructure.item.ItemProcessor;
 import org.springframework.batch.infrastructure.item.ItemStream;
 import org.springframework.batch.infrastructure.item.ItemStreamException;
+import org.springframework.batch.infrastructure.item.validator.ValidationException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -115,7 +116,11 @@ public class RestartableItemProcessor implements ItemProcessor<CustomerCsv, Cust
     }
 
     /**
-     * CustomerCsv → CustomerStg 변환 + 강제 실패 로직
+     * CustomerCsv → CustomerStg 변환 + 검증 + 강제 실패 로직
+     * <p>
+     * Week 05: 검증 로직 추가
+     * - validate() 메서드로 비즈니스 규칙 검증
+     * - 검증 실패 시 ValidationException 발생 → Skip 처리
      * <p>
      * 힌트:
      * - processedCount 증가
@@ -128,6 +133,7 @@ public class RestartableItemProcessor implements ItemProcessor<CustomerCsv, Cust
     @Override
     public CustomerStg process(CustomerCsv csv) {
         this.processedCount += 1;
+        validate(csv);
         if (effectiveFailAt > 0 && processedCount == effectiveFailAt) {
             throw new RuntimeException("Forced failure at " + effectiveFailAt);
         }
@@ -139,6 +145,20 @@ public class RestartableItemProcessor implements ItemProcessor<CustomerCsv, Cust
                 csv.phone(),
                 parsedRunDate
         );
+    }
+
+    private void validate(CustomerCsv csv) {
+        if (csv.customerId() == null || csv.customerId().isBlank()) {
+            throw new ValidationException("Customer ID is required");
+        }
+
+        if (csv.email() == null || csv.email().isBlank()) {
+            throw new ValidationException("Email is required");
+        }
+
+        if (!csv.email().contains("@")) {
+            throw new ValidationException("Email address must contain @");
+        }
     }
 
     /**

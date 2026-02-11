@@ -201,6 +201,65 @@ WHERE job_execution_id = ?;
 3. **시나리오 3**: identifying 파라미터(`runDate`) 변경 시 새로운 JobInstance 생성
 4. **시나리오 4**: non-identifying 파라미터(`chunkSize`)만 변경 시 동일 JobInstance로 인식 → 이미 완료 오류
 
+### 구현 코드
+
+#### DomainStudyJobConfig.java
+
+2-Step Job으로 구성하며, 각 Step의 Tasklet에서 `ChunkContext`를 통해 JobParameter에 접근한다. Week 02의 `@StepScope` + `@Value` Late Binding과 달리, `chunkContext.getStepContext().getJobParameters().get("key")`로 직접 꺼내는 방식이다.
+
+```java
+@Slf4j
+@Configuration
+public class DomainStudyJobConfig {
+
+    @Bean
+    public Job domainStudyJob(JobRepository jobRepository,
+                              Step domainStep1, Step domainStep2) {
+        return new JobBuilder("domainStudyJob", jobRepository)
+                .start(domainStep1)
+                .next(domainStep2)
+                .build();
+    }
+
+    @Bean
+    public Step domainStep1(JobRepository jobRepository,
+                            PlatformTransactionManager transactionManager) {
+        return new StepBuilder("domainStep1", jobRepository)
+                .tasklet(domainStep1Tasklet(), transactionManager)
+                .build();
+    }
+
+    @Bean
+    public Tasklet domainStep1Tasklet() {
+        return (contribution, chunkContext) -> {
+            // ChunkContext를 통한 JobParameter 접근 패턴
+            String runDate = chunkContext.getStepContext()
+                    .getJobParameters()
+                    .get("runDate") != null
+                    ? chunkContext.getStepContext().getJobParameters().get("runDate").toString()
+                    : "미지정";
+
+            log.info("Step 1 시작 - runDate (identifying): {}", runDate);
+            return RepeatStatus.FINISHED;
+        };
+    }
+
+    @Bean
+    public Tasklet domainStep2Tasklet() {
+        return (contribution, chunkContext) -> {
+            Object chunkSizeObj = chunkContext.getStepContext()
+                    .getJobParameters().get("chunkSize");
+            String chunkSize = chunkSizeObj != null ? chunkSizeObj.toString() : "미지정";
+
+            log.info("Step 2 시작 - chunkSize (non-identifying): {}", chunkSize);
+            return RepeatStatus.FINISHED;
+        };
+    }
+}
+```
+
+> **JobParameter 접근 방식 비교**: Week 01에서는 `ChunkContext`로 직접 꺼내지만, Week 02부터는 `@StepScope` + `@Value("#{jobParameters['key']}")` Late Binding을 사용한다. Late Binding은 Bean 생성 시점에 주입되어 코드가 간결하고, 테스트에서 파라미터 주입이 용이하다.
+
 ---
 
 ## 개념 관계도

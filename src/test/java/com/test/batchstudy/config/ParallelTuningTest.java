@@ -1,20 +1,12 @@
 package com.test.batchstudy.config;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.batch.core.BatchStatus;
-import org.springframework.batch.core.job.Job;
 import org.springframework.batch.core.job.JobExecution;
 import org.springframework.batch.core.job.parameters.JobParameters;
 import org.springframework.batch.core.job.parameters.JobParametersBuilder;
 import org.springframework.batch.core.step.StepExecution;
-import org.springframework.batch.test.JobOperatorTestUtils;
-import org.springframework.batch.test.JobRepositoryTestUtils;
-import org.springframework.batch.test.context.SpringBatchTest;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 import static com.test.batchstudy.constants.BatchConstants.*;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -30,31 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 5. threadCount 기본값 — 100건, threadCount 미전달 → 기본값 4로 COMPLETED
  * 6. 대용량 정합성 — 1000건, 4스레드, chunkSize=50 → 1000건 + 중복 0
  */
-@SpringBatchTest
-@SpringBootTest
-class ParallelTuningTest {
-
-    @Autowired
-    private JobOperatorTestUtils jobOperatorTestUtils;
-
-    @Autowired
-    private JobRepositoryTestUtils jobRepositoryTestUtils;
-
-    @Autowired
-    private Job customerImportJob;
-
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
-
-    @BeforeEach
-    void setUp() {
-        jobRepositoryTestUtils.removeJobExecutions();
-        jobOperatorTestUtils.setJob(customerImportJob);
-        jdbcTemplate.execute("DELETE FROM customer_daily_stats");
-        jdbcTemplate.execute("DELETE FROM customer_err");
-        jdbcTemplate.execute("DELETE FROM customer");
-        jdbcTemplate.execute("DELETE FROM customer_stg");
-    }
+class ParallelTuningTest extends AbstractBatchTest {
 
     @Test
     @DisplayName("시나리오1: 멀티스레드 정합성 — 100건, 4스레드, chunkSize=10 → COMPLETED + 중복 0")
@@ -75,15 +43,13 @@ class ParallelTuningTest {
                 .as("멀티스레드 4스레드로 정상 완료")
                 .isEqualTo(BatchStatus.COMPLETED);
 
-        Integer stgCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM customer_stg WHERE run_date = '2025-07-01'", Integer.class);
-        assertThat(stgCount).as("stg 테이블에 100건 적재").isEqualTo(100);
+        assertThat(countByRunDate(TABLE_CUSTOMER_STG, "2025-07-01"))
+                .as("stg 테이블에 100건 적재").isEqualTo(100);
 
-        Integer customerCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM customer", Integer.class);
-        assertThat(customerCount).as("customer 테이블에 100건 적재").isEqualTo(100);
+        assertThat(countTable(TABLE_CUSTOMER))
+                .as("customer 테이블에 100건 적재").isEqualTo(100);
 
-        // 중복 검증: customer_stg에 같은 customer_id가 2건 이상이면 중복
+        // 중복 검증
         Integer duplicates = jdbcTemplate.queryForObject("""
                 SELECT COUNT(*) FROM (
                     SELECT customer_id FROM customer_stg WHERE run_date = '2025-07-01'
@@ -111,9 +77,8 @@ class ParallelTuningTest {
                 .as("1스레드 정상 완료")
                 .isEqualTo(BatchStatus.COMPLETED);
 
-        Integer count1 = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM customer", Integer.class);
-        assertThat(count1).as("1스레드 — customer 1000건").isEqualTo(1000);
+        assertThat(countTable(TABLE_CUSTOMER))
+                .as("1스레드 — customer 1000건").isEqualTo(1000);
 
         // 데이터 정리 후 4스레드 실행
         jdbcTemplate.execute("DELETE FROM customer_daily_stats");
@@ -136,11 +101,9 @@ class ParallelTuningTest {
                 .as("4스레드 정상 완료")
                 .isEqualTo(BatchStatus.COMPLETED);
 
-        Integer count4 = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM customer", Integer.class);
-        assertThat(count4).as("4스레드 — customer 1000건").isEqualTo(1000);
+        assertThat(countTable(TABLE_CUSTOMER))
+                .as("4스레드 — customer 1000건").isEqualTo(1000);
 
-        // 소요시간 로그 (assertion 아님, 참고용)
         org.slf4j.LoggerFactory.getLogger(getClass())
                 .info("1000건 처리 소요시간 — 1스레드: {}ms, 4스레드: {}ms", elapsed1, elapsed4);
     }
@@ -163,13 +126,11 @@ class ParallelTuningTest {
                 .as("파티셔닝 정상 완료")
                 .isEqualTo(BatchStatus.COMPLETED);
 
-        // slave Step 실행 확인 — "stagingToTargetSlaveStep" 포함 이름으로 필터
         long slaveStepCount = execution.getStepExecutions().stream()
                 .filter(se -> se.getStepName().contains("stagingToTargetSlaveStep"))
                 .count();
         assertThat(slaveStepCount).as("4개 파티션 Slave Step 실행").isEqualTo(4);
 
-        // readCount 합산 = 100건
         long totalReadCount = execution.getStepExecutions().stream()
                 .filter(se -> se.getStepName().contains("stagingToTargetSlaveStep"))
                 .mapToLong(StepExecution::getReadCount)
@@ -190,7 +151,7 @@ class ParallelTuningTest {
         // when
         JobExecution execution = jobOperatorTestUtils.startJob(params);
 
-        // then — SkipListener가 customer_err에 기록 → StatsTasklet이 감지 → FAILED
+        // then
         assertThat(execution.getStatus())
                 .as("dirty 데이터 skip → StatsTasklet이 오류 감지 → FAILED")
                 .isEqualTo(BatchStatus.FAILED);
@@ -208,19 +169,15 @@ class ParallelTuningTest {
                 .as("정상 3건만 stg에 적재")
                 .isEqualTo(3);
 
-        Integer errCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM customer_err WHERE run_date = '2025-07-05'", Integer.class);
-        assertThat(errCount).as("customer_err에 3건 격리").isEqualTo(3);
+        assertThat(countByRunDate(TABLE_CUSTOMER_ERR, "2025-07-05"))
+                .as("customer_err에 3건 격리").isEqualTo(3);
     }
 
     @Test
     @DisplayName("시나리오5: threadCount 기본값 — threadCount 미전달 → 기본값 4로 COMPLETED")
     void threadCount_기본값() throws Exception {
         // given — threadCount 파라미터 없음 → Elvis 기본값 4 적용
-        JobParameters params = new JobParametersBuilder()
-                .addString(PARAM_INPUT_FILE, "input/customers_20250205.csv", true)
-                .addString(PARAM_RUN_DATE, "2025-07-06", true)
-                .toJobParameters();
+        JobParameters params = params("input/customers_20250205.csv", "2025-07-06");
 
         // when
         JobExecution execution = jobOperatorTestUtils.startJob(params);
@@ -230,11 +187,9 @@ class ParallelTuningTest {
                 .as("threadCount 기본값 4로 정상 완료")
                 .isEqualTo(BatchStatus.COMPLETED);
 
-        Integer customerCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM customer", Integer.class);
-        assertThat(customerCount).as("customer 테이블에 100건").isEqualTo(100);
+        assertThat(countTable(TABLE_CUSTOMER))
+                .as("customer 테이블에 100건").isEqualTo(100);
 
-        // slave Step 4개 확인 (기본값 threadCount=4 → gridSize=4)
         long slaveStepCount = execution.getStepExecutions().stream()
                 .filter(se -> se.getStepName().contains("stagingToTargetSlaveStep"))
                 .count();
@@ -260,15 +215,12 @@ class ParallelTuningTest {
                 .as("대용량 1000건 멀티스레드 정상 완료")
                 .isEqualTo(BatchStatus.COMPLETED);
 
-        Integer stgCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM customer_stg WHERE run_date = '2025-07-07'", Integer.class);
-        assertThat(stgCount).as("stg 1000건 적재").isEqualTo(1000);
+        assertThat(countByRunDate(TABLE_CUSTOMER_STG, "2025-07-07"))
+                .as("stg 1000건 적재").isEqualTo(1000);
 
-        Integer customerCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM customer", Integer.class);
-        assertThat(customerCount).as("customer 1000건 적재").isEqualTo(1000);
+        assertThat(countTable(TABLE_CUSTOMER))
+                .as("customer 1000건 적재").isEqualTo(1000);
 
-        // 중복 검증
         Integer duplicates = jdbcTemplate.queryForObject("""
                 SELECT COUNT(*) FROM (
                     SELECT customer_id FROM customer_stg WHERE run_date = '2025-07-07'

@@ -14,6 +14,8 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 
+import static com.test.batchstudy.constants.ValidationSql.INVALID_RECORD_WHERE;
+
 /**
  * 스테이징 데이터 검증 Tasklet
  * <p>
@@ -62,17 +64,7 @@ public class ValidateTasklet implements Tasklet {
      * @return 오류 레코드 수 (이메일 형식 오류 + NULL customer_id + 중복 customer_id)
      */
     private int validateStagingData(LocalDate runDate) {
-        String sql = "SELECT COUNT(*) " +
-                "FROM customer_stg " +
-                "WHERE run_date = ? " +
-                "AND (email NOT LIKE '%@%' " +
-                "OR customer_id IS NULL " +
-                "OR customer_id IN (                                                                                          \n" +
-                "          SELECT customer_id FROM customer_stg                                                                     \n" +
-                "          WHERE run_date = ?                                                                                       \n" +
-                "          GROUP BY customer_id HAVING COUNT(*) > 1                                                                 \n" +
-                "      ))";
-
+        String sql = "SELECT COUNT(*) FROM customer_stg WHERE " + INVALID_RECORD_WHERE;
         return jdbcTemplate.queryForObject(sql, Integer.class, runDate, runDate);
     }
 }

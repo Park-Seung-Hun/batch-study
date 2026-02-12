@@ -44,6 +44,8 @@ import javax.sql.DataSource;
 import java.time.LocalDate;
 import java.util.Map;
 
+import static com.test.batchstudy.constants.ValidationSql.VALID_RECORD_FILTER;
+
 /**
  * Week 06: 파라미터 + Scope 실습
  * <p>
@@ -308,8 +310,7 @@ public class CustomerImportJobConfig {
         queryProvider.setSelectClause("id, customer_id, email, name, phone, run_date");
         queryProvider.setFromClause("customer_stg");
         queryProvider.setWhereClause(
-                "run_date = :runDate AND email LIKE '%@%' AND customer_id IS NOT NULL " +
-                "AND id >= :minId AND id <= :maxId"
+                "run_date = :runDate AND " + VALID_RECORD_FILTER + " AND id >= :minId AND id <= :maxId"
         );
         queryProvider.setSortKeys(Map.of("id", Order.ASCENDING));
 

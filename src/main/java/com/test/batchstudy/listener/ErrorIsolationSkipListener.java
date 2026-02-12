@@ -31,7 +31,7 @@ public class ErrorIsolationSkipListener implements SkipListener<CustomerCsv, Cus
     public void onSkipInRead(Throwable t) {
         String errMsg = getErrMsg(t);
         log.warn("Skip in Read: {}", errMsg);
-        insertErr(errMsg);
+        insertErr(errMsg, null, null, null, null);
     }
 
     @Override
@@ -48,15 +48,10 @@ public class ErrorIsolationSkipListener implements SkipListener<CustomerCsv, Cus
         insertErr(errMsg, item.customerId(), item.email(), item.name(), item.phone());
     }
 
-    private void insertErr(String errMsg) {
-        String sql = "INSERT INTO customer_err (customer_id, email, name, phone, error_message, run_date) " +
-                "VALUES(null, null, null, null, ?, ?)";
-        jdbcTemplate.update(sql, errMsg, Date.valueOf(getRunDate()));
-    }
-
     private void insertErr(String errMsg, String customerId, String email, String name, String phone) {
-        String sql = "INSERT INTO customer_err (customer_id, email, name, phone, error_message, run_date) " +
-                "VALUES(?, ?, ?, ?, ?, ?)";
+        String sql = """
+                INSERT INTO customer_err (customer_id, email, name, phone, error_message, run_date)
+                VALUES (?, ?, ?, ?, ?, ?)""";
         jdbcTemplate.update(sql, customerId, email, name, phone, errMsg, Date.valueOf(getRunDate()));
     }
 

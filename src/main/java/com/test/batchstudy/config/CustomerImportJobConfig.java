@@ -9,8 +9,10 @@ import com.test.batchstudy.processor.RestartableItemProcessor;
 import com.test.batchstudy.tasklet.ErrorIsolateTasklet;
 import com.test.batchstudy.tasklet.StatsTasklet;
 import com.test.batchstudy.tasklet.ValidateTasklet;
+import com.test.batchstudy.validator.CustomerImportJobParametersValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.batch.core.configuration.annotation.JobScope;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.job.Job;
 import org.springframework.batch.core.job.builder.JobBuilder;
@@ -36,11 +38,14 @@ import javax.sql.DataSource;
 import java.time.LocalDate;
 
 /**
- * Week 03: 검증 + 업서트 + Flow 분기 Job 설정
+ * Week 06: 파라미터 + Scope 실습
  * <p>
  * JobParameters:
  * - inputFile (String, identifying): 입력 CSV 파일 경로
  * - runDate (String, identifying): 실행 기준일 (yyyy-MM-dd)
+ * - chunkSize (Long, non-identifying): 청크 크기 (기본값 100)
+ * - skipLimit (Long, non-identifying): 스킵 허용 건수 (기본값 10)
+ * - retryLimit (Long, non-identifying): 재시도 횟수 (기본값 3)
  * <p>
  * 처리 흐름:
  * 1. csvToStagingStep: CSV → customer_stg
@@ -54,9 +59,8 @@ import java.time.LocalDate;
 @RequiredArgsConstructor
 public class CustomerImportJobConfig {
 
-    private static final int CHUNK_SIZE = 100;
-
     private final DataSource dataSource;
+    private final CustomerImportJobParametersValidator validator;
 
     @Bean
     public Job customerImportJob(JobRepository jobRepository,
@@ -69,6 +73,7 @@ public class CustomerImportJobConfig {
         // - COMPLETED: 정상 → stagingToTargetStep → statsStep → 완료
         // - INVALID: 오류 → errorIsolateStep → statsStep → FAILED
         return new JobBuilder("customerImportJob", jobRepository)
+                .validator(validator)
                 .start(csvToStagingStep)
                 .next(validateStep)
                 .on("COMPLETED").to(stagingToTargetStep)
@@ -97,36 +102,34 @@ public class CustomerImportJobConfig {
     }
 
     /**
-     * CSV → Staging Step (Week 05: 내결함성 추가)
+     * CSV → Staging Step (Week 06: @JobScope + 동적 파라미터)
      * <p>
      * Week 04: 재시작 지원 (ItemStream)
      * Week 05: Skip/Retry/Listener 추가
-     * <p>
-     * 내결함성 설정:
-     * - FlatFileParseException: CSV 파싱 오류 (Reader 레벨)
-     * - ValidationException: 비즈니스 검증 오류 (Processor 레벨)
-     * - skipLimit(10): 최대 10건까지 Skip 허용, 초과 시 Job FAILED
-     * - DeadlockLoserDataAccessException: DB 교착 상태 시 최대 3회 재시도
-     * - ErrorIsolationSkipListener: Skip된 레코드를 customer_err 테이블에 격리
+     * Week 06: chunkSize, skipLimit, retryLimit을 JobParameters에서 주입
      */
     @Bean
+    @JobScope
     public Step csvToStagingStep(JobRepository jobRepository,
                                  FlatFileItemReader<CustomerCsv> customerCsvReader,
                                  RestartableItemProcessor restartableItemProcessor,
                                  JdbcBatchItemWriter<CustomerStg> customerStgWriter,
                                  ErrorIsolationSkipListener errorIsolationSkipListener,
-                                 RetryLoggingListener retryLoggingListener) {
+                                 RetryLoggingListener retryLoggingListener,
+                                 @Value("#{jobParameters['chunkSize'] ?: 100}") int chunkSize,
+                                 @Value("#{jobParameters['skipLimit'] ?: 10}") int skipLimit,
+                                 @Value("#{jobParameters['retryLimit'] ?: 3}") int retryLimit) {
         return new StepBuilder("csvToStagingStep", jobRepository)
-                .<CustomerCsv, CustomerStg>chunk(CHUNK_SIZE)
+                .<CustomerCsv, CustomerStg>chunk(chunkSize)
                 .reader(customerCsvReader)
                 .processor(restartableItemProcessor)
                 .writer(customerStgWriter)
                 .faultTolerant()
                 .skip(ValidationException.class)
-                .skipLimit(10)
+                .skipLimit(skipLimit)
                 .skipListener(errorIsolationSkipListener)
                 .retry(DeadlockLoserDataAccessException.class)
-                .retryLimit(3)
+                .retryLimit(retryLimit)
                 .retryListener(retryLoggingListener)
                 .stream(customerCsvReader)
                 .stream(restartableItemProcessor)
@@ -209,14 +212,17 @@ public class CustomerImportJobConfig {
 
     /**
      * Staging → Target UPSERT Step (Chunk)
+     * Week 06: @JobScope + SpEL Elvis operator로 chunkSize 동적화
      */
     @Bean
+    @JobScope
     public Step stagingToTargetStep(JobRepository jobRepository,
                                     JdbcCursorItemReader<CustomerStg> stagingReader,
                                     ItemProcessor<CustomerStg, Customer> stagingToCustomerProcessor,
-                                    JdbcBatchItemWriter<Customer> customerUpsertWriter) {
+                                    JdbcBatchItemWriter<Customer> customerUpsertWriter,
+                                    @Value("#{jobParameters['chunkSize'] ?: 100}") int chunkSize) {
         return new StepBuilder("stagingToTargetStep", jobRepository)
-                .<CustomerStg, Customer>chunk(CHUNK_SIZE)
+                .<CustomerStg, Customer>chunk(chunkSize)
                 .reader(stagingReader)
                 .processor(stagingToCustomerProcessor)
                 .writer(customerUpsertWriter)

@@ -18,6 +18,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.Collection;
 
+import static com.test.batchstudy.constants.BatchConstants.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -61,8 +62,8 @@ class CustomerImportJobFlowTest {
     void 정상데이터_VALID_UPSERT_성공() throws Exception {
         // given
         JobParameters params = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_20250205.csv", true)
-                .addString("runDate", "2025-02-10", true)
+                .addString(PARAM_INPUT_FILE, "input/customers_20250205.csv", true)
+                .addString(PARAM_RUN_DATE, "2025-02-10", true)
                 .toJobParameters();
 
         // when
@@ -92,8 +93,8 @@ class CustomerImportJobFlowTest {
     void 오류데이터_INVALID_errorStep_FAILED() throws Exception {
         // given - 오류 데이터가 포함된 CSV
         JobParameters params = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_invalid_20250210.csv", true)
-                .addString("runDate", "2025-02-11", true)
+                .addString(PARAM_INPUT_FILE, "input/customers_invalid_20250210.csv", true)
+                .addString(PARAM_RUN_DATE, "2025-02-11", true)
                 .toJobParameters();
 
         // when
@@ -123,8 +124,8 @@ class CustomerImportJobFlowTest {
     void 동일데이터_재실행_UPDATE_발생() throws Exception {
         // given - 첫 번째 실행
         JobParameters params1 = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_20250205.csv", true)
-                .addString("runDate", "2025-02-12", true)
+                .addString(PARAM_INPUT_FILE, "input/customers_20250205.csv", true)
+                .addString(PARAM_RUN_DATE, "2025-02-12", true)
                 .toJobParameters();
         jobOperatorTestUtils.startJob(params1);
 
@@ -140,8 +141,8 @@ class CustomerImportJobFlowTest {
 
         // given - 두 번째 실행 (다른 runDate로)
         JobParameters params2 = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_20250205.csv", true)
-                .addString("runDate", "2025-02-13", true)
+                .addString(PARAM_INPUT_FILE, "input/customers_20250205.csv", true)
+                .addString(PARAM_RUN_DATE, "2025-02-13", true)
                 .toJobParameters();
 
         // when
@@ -171,8 +172,8 @@ class CustomerImportJobFlowTest {
     void 집계테이블_기록_확인() throws Exception {
         // given
         JobParameters params = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_20250205.csv", true)
-                .addString("runDate", "2025-02-14", true)
+                .addString(PARAM_INPUT_FILE, "input/customers_20250205.csv", true)
+                .addString(PARAM_RUN_DATE, "2025-02-14", true)
                 .toJobParameters();
 
         // when
@@ -195,8 +196,8 @@ class CustomerImportJobFlowTest {
     void 오류데이터_집계_확인() throws Exception {
         // given - 오류 데이터가 포함된 CSV
         JobParameters params = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_invalid_20250210.csv", true)
-                .addString("runDate", "2025-02-15", true)
+                .addString(PARAM_INPUT_FILE, "input/customers_invalid_20250210.csv", true)
+                .addString(PARAM_RUN_DATE, "2025-02-15", true)
                 .toJobParameters();
 
         // when

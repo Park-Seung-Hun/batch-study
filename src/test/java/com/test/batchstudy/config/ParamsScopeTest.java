@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import static com.test.batchstudy.constants.BatchConstants.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -61,9 +62,9 @@ class ParamsScopeTest {
     void 동적_chunkSize() throws Exception {
         // given — 100건 정상 데이터, chunkSize=2
         JobParameters params = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_20250205.csv", true)
-                .addString("runDate", "2025-06-01", true)
-                .addLong("chunkSize", 2L, false)
+                .addString(PARAM_INPUT_FILE, "input/customers_20250205.csv", true)
+                .addString(PARAM_RUN_DATE, "2025-06-01", true)
+                .addLong(PARAM_CHUNK_SIZE, 2L, false)
                 .toJobParameters();
 
         // when
@@ -89,9 +90,9 @@ class ParamsScopeTest {
     void 동적_skipLimit() throws Exception {
         // given — 6건 (정상 3, 오류 3), skipLimit=2
         JobParameters params = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_dirty_20250205.csv", true)
-                .addString("runDate", "2025-06-02", true)
-                .addLong("skipLimit", 2L, false)
+                .addString(PARAM_INPUT_FILE, "input/customers_dirty_20250205.csv", true)
+                .addString(PARAM_RUN_DATE, "2025-06-02", true)
+                .addLong(PARAM_SKIP_LIMIT, 2L, false)
                 .toJobParameters();
 
         // when
@@ -111,8 +112,8 @@ class ParamsScopeTest {
     void nonIdentifying_재사용() throws Exception {
         // 1차 실행 — identifying 파라미터만으로 Job COMPLETED
         JobParameters firstParams = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_20250205.csv", true)
-                .addString("runDate", "2025-06-03", true)
+                .addString(PARAM_INPUT_FILE, "input/customers_20250205.csv", true)
+                .addString(PARAM_RUN_DATE, "2025-06-03", true)
                 .toJobParameters();
 
         JobExecution firstExecution = jobOperatorTestUtils.startJob(firstParams);
@@ -124,9 +125,9 @@ class ParamsScopeTest {
         // non-identifying 파라미터는 JobInstance 구분에 사용되지 않으므로 같은 JobInstance
         // → 이미 완료된 JobInstance에 대해 재실행 시도 → 예외
         JobParameters secondParams = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_20250205.csv", true)
-                .addString("runDate", "2025-06-03", true)
-                .addLong("chunkSize", 50L, false)
+                .addString(PARAM_INPUT_FILE, "input/customers_20250205.csv", true)
+                .addString(PARAM_RUN_DATE, "2025-06-03", true)
+                .addLong(PARAM_CHUNK_SIZE, 50L, false)
                 .toJobParameters();
 
         assertThatThrownBy(() -> jobOperatorTestUtils.startJob(secondParams))
@@ -139,7 +140,7 @@ class ParamsScopeTest {
     void validator_inputFile_누락() {
         // given — inputFile 없이 runDate만 전달
         JobParameters params = new JobParametersBuilder()
-                .addString("runDate", "2025-06-04", true)
+                .addString(PARAM_RUN_DATE, "2025-06-04", true)
                 .toJobParameters();
 
         // then — Validator가 Job 실행 전에 예외를 던짐
@@ -153,8 +154,8 @@ class ParamsScopeTest {
     void validator_runDate_형식오류() {
         // given — runDate가 yyyy-MM-dd 형식이 아님
         JobParameters params = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_20250205.csv", true)
-                .addString("runDate", "20250301", true)
+                .addString(PARAM_INPUT_FILE, "input/customers_20250205.csv", true)
+                .addString(PARAM_RUN_DATE, "20250301", true)
                 .toJobParameters();
 
         // then — Validator가 날짜 형식 검증 실패로 예외
@@ -168,8 +169,8 @@ class ParamsScopeTest {
     void 기본값_동작() throws Exception {
         // given — chunkSize, skipLimit, retryLimit 모두 미전달 → Elvis 기본값 적용
         JobParameters params = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_20250205.csv", true)
-                .addString("runDate", "2025-06-06", true)
+                .addString(PARAM_INPUT_FILE, "input/customers_20250205.csv", true)
+                .addString(PARAM_RUN_DATE, "2025-06-06", true)
                 .toJobParameters();
 
         // when

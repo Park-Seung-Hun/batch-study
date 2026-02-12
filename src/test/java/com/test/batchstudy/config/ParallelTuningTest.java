@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import static com.test.batchstudy.constants.BatchConstants.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -60,10 +61,10 @@ class ParallelTuningTest {
     void 멀티스레드_정합성() throws Exception {
         // given
         JobParameters params = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_20250205.csv", true)
-                .addString("runDate", "2025-07-01", true)
-                .addLong("chunkSize", 10L, false)
-                .addLong("threadCount", 4L, false)
+                .addString(PARAM_INPUT_FILE, "input/customers_20250205.csv", true)
+                .addString(PARAM_RUN_DATE, "2025-07-01", true)
+                .addLong(PARAM_CHUNK_SIZE, 10L, false)
+                .addLong(PARAM_THREAD_COUNT, 4L, false)
                 .toJobParameters();
 
         // when
@@ -97,9 +98,9 @@ class ParallelTuningTest {
     void 스레드_수_비교() throws Exception {
         // 1스레드 실행
         JobParameters params1 = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_1000.csv", true)
-                .addString("runDate", "2025-07-02", true)
-                .addLong("threadCount", 1L, false)
+                .addString(PARAM_INPUT_FILE, "input/customers_1000.csv", true)
+                .addString(PARAM_RUN_DATE, "2025-07-02", true)
+                .addLong(PARAM_THREAD_COUNT, 1L, false)
                 .toJobParameters();
 
         long start1 = System.currentTimeMillis();
@@ -122,9 +123,9 @@ class ParallelTuningTest {
         jobRepositoryTestUtils.removeJobExecutions();
 
         JobParameters params4 = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_1000.csv", true)
-                .addString("runDate", "2025-07-03", true)
-                .addLong("threadCount", 4L, false)
+                .addString(PARAM_INPUT_FILE, "input/customers_1000.csv", true)
+                .addString(PARAM_RUN_DATE, "2025-07-03", true)
+                .addLong(PARAM_THREAD_COUNT, 4L, false)
                 .toJobParameters();
 
         long start4 = System.currentTimeMillis();
@@ -149,9 +150,9 @@ class ParallelTuningTest {
     void 파티셔닝_정합성() throws Exception {
         // given
         JobParameters params = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_20250205.csv", true)
-                .addString("runDate", "2025-07-04", true)
-                .addLong("threadCount", 4L, false)
+                .addString(PARAM_INPUT_FILE, "input/customers_20250205.csv", true)
+                .addString(PARAM_RUN_DATE, "2025-07-04", true)
+                .addLong(PARAM_THREAD_COUNT, 4L, false)
                 .toJobParameters();
 
         // when
@@ -181,9 +182,9 @@ class ParallelTuningTest {
     void 멀티스레드_스킵() throws Exception {
         // given — 6건 (정상 3, 오류 3)
         JobParameters params = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_dirty_20250205.csv", true)
-                .addString("runDate", "2025-07-05", true)
-                .addLong("threadCount", 4L, false)
+                .addString(PARAM_INPUT_FILE, "input/customers_dirty_20250205.csv", true)
+                .addString(PARAM_RUN_DATE, "2025-07-05", true)
+                .addLong(PARAM_THREAD_COUNT, 4L, false)
                 .toJobParameters();
 
         // when
@@ -217,8 +218,8 @@ class ParallelTuningTest {
     void threadCount_기본값() throws Exception {
         // given — threadCount 파라미터 없음 → Elvis 기본값 4 적용
         JobParameters params = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_20250205.csv", true)
-                .addString("runDate", "2025-07-06", true)
+                .addString(PARAM_INPUT_FILE, "input/customers_20250205.csv", true)
+                .addString(PARAM_RUN_DATE, "2025-07-06", true)
                 .toJobParameters();
 
         // when
@@ -245,10 +246,10 @@ class ParallelTuningTest {
     void 대용량_정합성() throws Exception {
         // given
         JobParameters params = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_1000.csv", true)
-                .addString("runDate", "2025-07-07", true)
-                .addLong("chunkSize", 50L, false)
-                .addLong("threadCount", 4L, false)
+                .addString(PARAM_INPUT_FILE, "input/customers_1000.csv", true)
+                .addString(PARAM_RUN_DATE, "2025-07-07", true)
+                .addLong(PARAM_CHUNK_SIZE, 50L, false)
+                .addLong(PARAM_THREAD_COUNT, 4L, false)
                 .toJobParameters();
 
         // when

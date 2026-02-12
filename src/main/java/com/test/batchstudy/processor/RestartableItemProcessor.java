@@ -18,6 +18,8 @@ import java.sql.Date;
 import java.time.LocalDate;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static com.test.batchstudy.constants.BatchConstants.CTX_PROCESSED_COUNT;
+
 /**
  * Week 04: 재시작 가능한 ItemProcessor
  * <p>
@@ -36,7 +38,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 @RequiredArgsConstructor
 public class RestartableItemProcessor implements ItemProcessor<CustomerCsv, CustomerStg>, ItemStream {
 
-    private static final String PROCESSED_COUNT_KEY = "processedCount";
+    private static final String PROCESSED_COUNT_KEY = CTX_PROCESSED_COUNT;
 
     private final JdbcTemplate jdbcTemplate;
 

@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import static com.test.batchstudy.constants.BatchConstants.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -55,8 +56,8 @@ class CustomerImportJobTest {
     void CSV파일_스테이징_적재_성공() throws Exception {
         // given
         JobParameters params = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_20250205.csv", true)
-                .addString("runDate", "2025-02-05", true)
+                .addString(PARAM_INPUT_FILE, "input/customers_20250205.csv", true)
+                .addString(PARAM_RUN_DATE, "2025-02-05", true)
                 .toJobParameters();
 
         // when
@@ -78,8 +79,8 @@ class CustomerImportJobTest {
     void READ_COUNT_WRITE_COUNT_일치() throws Exception {
         // given
         JobParameters params = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_20250205.csv", true)
-                .addString("runDate", "2025-02-06", true)
+                .addString(PARAM_INPUT_FILE, "input/customers_20250205.csv", true)
+                .addString(PARAM_RUN_DATE, "2025-02-06", true)
                 .toJobParameters();
 
         // when
@@ -96,8 +97,8 @@ class CustomerImportJobTest {
     void ChunkSize_기반_COMMIT_COUNT_검증() throws Exception {
         // given
         JobParameters params = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_20250205.csv", true)
-                .addString("runDate", "2025-02-07", true)
+                .addString(PARAM_INPUT_FILE, "input/customers_20250205.csv", true)
+                .addString(PARAM_RUN_DATE, "2025-02-07", true)
                 .toJobParameters();
 
         // when

@@ -9,6 +9,9 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 
+import static com.test.batchstudy.constants.BatchConstants.PARAM_INPUT_FILE;
+import static com.test.batchstudy.constants.BatchConstants.PARAM_RUN_DATE;
+
 /**
  * Week 06: customerImportJob 파라미터 검증기
  * <p>
@@ -21,12 +24,12 @@ public class CustomerImportJobParametersValidator implements JobParametersValida
 
     @Override
     public void validate(JobParameters parameters) throws InvalidJobParametersException {
-        String inputFile = parameters.getString("inputFile");
+        String inputFile = parameters.getString(PARAM_INPUT_FILE);
         if (inputFile == null || inputFile.isBlank()) {
             throw new InvalidJobParametersException("inputFile is null or blank");
         }
 
-        String runDate = parameters.getString("runDate");
+        String runDate = parameters.getString(PARAM_RUN_DATE);
         if (runDate == null || runDate.isBlank()) {
             throw new InvalidJobParametersException("runDate is null or blank");
         }

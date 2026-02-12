@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import static com.test.batchstudy.constants.BatchConstants.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -58,8 +59,8 @@ class FaultToleranceTest {
     void 스킵_동작_검증() throws Exception {
         // given — 6건 (정상 3, 오류 3)
         JobParameters params = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_dirty_20250205.csv", true)
-                .addString("runDate", "2025-02-20", true)
+                .addString(PARAM_INPUT_FILE, "input/customers_dirty_20250205.csv", true)
+                .addString(PARAM_RUN_DATE, "2025-02-20", true)
                 .toJobParameters();
 
         // when
@@ -98,8 +99,8 @@ class FaultToleranceTest {
     void 오류격리_확인() throws Exception {
         // given — 6건 (정상 3, 오류 3)
         JobParameters params = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_dirty_20250205.csv", true)
-                .addString("runDate", "2025-02-21", true)
+                .addString(PARAM_INPUT_FILE, "input/customers_dirty_20250205.csv", true)
+                .addString(PARAM_RUN_DATE, "2025-02-21", true)
                 .toJobParameters();
 
         // when
@@ -138,8 +139,8 @@ class FaultToleranceTest {
     void skipLimit_초과() throws Exception {
         // given — 15건 (정상 3, 오류 12 > skipLimit 10)
         JobParameters params = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_very_dirty_20250205.csv", true)
-                .addString("runDate", "2025-02-22", true)
+                .addString(PARAM_INPUT_FILE, "input/customers_very_dirty_20250205.csv", true)
+                .addString(PARAM_RUN_DATE, "2025-02-22", true)
                 .toJobParameters();
 
         // when
@@ -159,8 +160,8 @@ class FaultToleranceTest {
     void 정상데이터_회귀() throws Exception {
         // given — 100건 정상 데이터
         JobParameters params = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_20250205.csv", true)
-                .addString("runDate", "2025-02-23", true)
+                .addString(PARAM_INPUT_FILE, "input/customers_20250205.csv", true)
+                .addString(PARAM_RUN_DATE, "2025-02-23", true)
                 .toJobParameters();
 
         // when

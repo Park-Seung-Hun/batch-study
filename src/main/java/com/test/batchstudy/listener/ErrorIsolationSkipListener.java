@@ -11,6 +11,8 @@ import org.springframework.stereotype.Component;
 
 import java.sql.Date;
 
+import static com.test.batchstudy.constants.BatchConstants.PARAM_RUN_DATE;
+
 /**
  * Week 05: Skip된 레코드를 customer_err 테이블에 격리하는 Listener
  * <p>
@@ -62,7 +64,7 @@ public class ErrorIsolationSkipListener implements SkipListener<CustomerCsv, Cus
         return StepSynchronizationManager.getContext()
                 .getStepExecution()
                 .getJobParameters()
-                .getString("runDate");
+                .getString(PARAM_RUN_DATE);
     }
 
     private String getErrMsg(Throwable t) {

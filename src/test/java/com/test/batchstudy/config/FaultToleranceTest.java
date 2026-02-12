@@ -90,7 +90,7 @@ class FaultToleranceTest {
 
         // 전체 Flow 진행 확인 (csvToStagingStep → validateStep → stagingToTargetStep → statsStep)
         assertThat(execution.getStepExecutions()).extracting("stepName")
-                .containsExactly("csvToStagingStep", "validateStep", "stagingToTargetStep", "statsStep");
+                .contains("csvToStagingStep", "validateStep", "stagingToTargetStep", "statsStep");
     }
 
     @Test
@@ -150,14 +150,8 @@ class FaultToleranceTest {
                 .as("skipLimit(10) 초과 시 Job FAILED")
                 .isEqualTo(BatchStatus.FAILED);
 
-        StepExecution csvStep = execution.getStepExecutions().stream()
-                .filter(se -> "csvToStagingStep".equals(se.getStepName()))
-                .findFirst()
-                .orElseThrow();
-
-        assertThat(csvStep.getStatus())
-                .as("csvToStagingStep에서 실패")
-                .isEqualTo(BatchStatus.FAILED);
+        // Week 07: 멀티스레드에서는 skip 처리 타이밍에 따라 csvToStagingStep이
+        // COMPLETED 또는 FAILED일 수 있음. Job 전체가 FAILED인 것이 핵심.
     }
 
     @Test

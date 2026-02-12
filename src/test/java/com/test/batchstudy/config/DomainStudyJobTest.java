@@ -15,6 +15,7 @@ import org.springframework.batch.test.context.SpringBatchTest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
+import static com.test.batchstudy.constants.BatchConstants.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -50,8 +51,8 @@ class DomainStudyJobTest {
     void 시나리오1_최초실행_COMPLETED() throws Exception {
         // given
         JobParameters params = new JobParametersBuilder()
-                .addString("runDate", "2025-02-05", true)
-                .addLong("chunkSize", 100L, false)
+                .addString(PARAM_RUN_DATE, "2025-02-05", true)
+                .addLong(PARAM_CHUNK_SIZE, 100L, false)
                 .toJobParameters();
 
         // when
@@ -67,8 +68,8 @@ class DomainStudyJobTest {
     void 시나리오2_동일파라미터_재실행시_예외발생() throws Exception {
         // given - 최초 실행
         JobParameters params = new JobParametersBuilder()
-                .addString("runDate", "2025-02-06", true)
-                .addLong("chunkSize", 100L, false)
+                .addString(PARAM_RUN_DATE, "2025-02-06", true)
+                .addLong(PARAM_CHUNK_SIZE, 100L, false)
                 .toJobParameters();
 
         JobExecution firstExecution = jobOperatorTestUtils.startJob(params);
@@ -84,8 +85,8 @@ class DomainStudyJobTest {
     void 시나리오3_runDate변경시_새JobInstance생성() throws Exception {
         // given - 첫 번째 실행
         JobParameters params1 = new JobParametersBuilder()
-                .addString("runDate", "2025-02-07", true)
-                .addLong("chunkSize", 100L, false)
+                .addString(PARAM_RUN_DATE, "2025-02-07", true)
+                .addLong(PARAM_CHUNK_SIZE, 100L, false)
                 .toJobParameters();
 
         JobExecution execution1 = jobOperatorTestUtils.startJob(params1);
@@ -93,8 +94,8 @@ class DomainStudyJobTest {
 
         // when - runDate 변경하여 두 번째 실행
         JobParameters params2 = new JobParametersBuilder()
-                .addString("runDate", "2025-02-08", true)
-                .addLong("chunkSize", 100L, false)
+                .addString(PARAM_RUN_DATE, "2025-02-08", true)
+                .addLong(PARAM_CHUNK_SIZE, 100L, false)
                 .toJobParameters();
 
         JobExecution execution2 = jobOperatorTestUtils.startJob(params2);
@@ -114,8 +115,8 @@ class DomainStudyJobTest {
     void 시나리오4_nonIdentifying파라미터만_변경시_동일JobInstance() throws Exception {
         // given - 최초 실행
         JobParameters params1 = new JobParametersBuilder()
-                .addString("runDate", "2025-02-09", true)
-                .addLong("chunkSize", 100L, false)
+                .addString(PARAM_RUN_DATE, "2025-02-09", true)
+                .addLong(PARAM_CHUNK_SIZE, 100L, false)
                 .toJobParameters();
 
         JobExecution execution1 = jobOperatorTestUtils.startJob(params1);
@@ -123,8 +124,8 @@ class DomainStudyJobTest {
 
         // when & then - non-identifying 파라미터(chunkSize)만 변경해도 동일 JobInstance로 인해 예외 발생
         JobParameters params2 = new JobParametersBuilder()
-                .addString("runDate", "2025-02-09", true)
-                .addLong("chunkSize", 200L, false)  // chunkSize만 변경
+                .addString(PARAM_RUN_DATE, "2025-02-09", true)
+                .addLong(PARAM_CHUNK_SIZE, 200L, false)  // chunkSize만 변경
                 .toJobParameters();
 
         assertThatThrownBy(() -> jobOperatorTestUtils.startJob(params2))

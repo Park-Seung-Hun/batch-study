@@ -13,6 +13,8 @@ import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
 
+import static com.test.batchstudy.constants.ValidationSql.INVALID_RECORD_WHERE;
+
 /**
  * 오류 레코드 격리 Tasklet
  * <p>
@@ -52,30 +54,18 @@ public class ErrorIsolateTasklet implements Tasklet {
      */
     private int isolateErrorRecords(LocalDate runDate) {
         String sql = """
-            INSERT INTO customer_err (customer_id, email, name, phone, error_message, run_date)
-            SELECT
-                customer_id,
-                email,
-                name,
-                phone,
-                CASE
-                    WHEN customer_id IS NULL THEN 'customer_id is NULL'
-                    WHEN email NOT LIKE '%@%' THEN 'Invalid email format'
-                    ELSE 'Duplicate customer_id'
-                END AS error_message,
-                run_date
-            FROM customer_stg
-            WHERE run_date = ?
-              AND (
-                email NOT LIKE '%@%'
-                OR customer_id IS NULL
-                OR customer_id IN (
-                    SELECT customer_id FROM customer_stg
-                    WHERE run_date = ?
-                    GROUP BY customer_id HAVING COUNT(*) > 1
-                )
-              )
-            """;
+                INSERT INTO customer_err (customer_id, email, name, phone, error_message, run_date)
+                SELECT
+                    customer_id, email, name, phone,
+                    CASE
+                        WHEN customer_id IS NULL THEN 'customer_id is NULL'
+                        WHEN email NOT LIKE '%@%' THEN 'Invalid email format'
+                        ELSE 'Duplicate customer_id'
+                    END AS error_message,
+                    run_date
+                FROM customer_stg
+                WHERE \
+                """ + INVALID_RECORD_WHERE;
 
         return jdbcTemplate.update(sql, runDate, runDate);
     }

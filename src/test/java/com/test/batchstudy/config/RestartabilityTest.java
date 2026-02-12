@@ -20,6 +20,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.sql.Date;
 
+import static com.test.batchstudy.constants.BatchConstants.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -70,9 +71,9 @@ class RestartabilityTest {
     void 강제실패_500건에서_FAILED() throws Exception {
         // given: failAt=500으로 500번째 레코드에서 강제 실패
         JobParameters params = new JobParametersBuilder()
-                .addString("inputFile", INPUT_FILE, true)
-                .addString("runDate", RUN_DATE, true)
-                .addLong("failAt", 500L, false)  // 500건에서 실패
+                .addString(PARAM_INPUT_FILE, INPUT_FILE, true)
+                .addString(PARAM_RUN_DATE, RUN_DATE, true)
+                .addLong(PARAM_FAIL_AT, 500L, false)  // 500건에서 실패
                 .toJobParameters();
 
         // when
@@ -102,9 +103,9 @@ class RestartabilityTest {
     void ItemStream_update_청크마다_호출() throws Exception {
         // given: 300건 처리 (3청크)
         JobParameters params = new JobParametersBuilder()
-                .addString("inputFile", INPUT_FILE, true)
-                .addString("runDate", RUN_DATE, true)
-                .addLong("failAt", 350L, false)  // 350건에서 실패 → 300건 커밋
+                .addString(PARAM_INPUT_FILE, INPUT_FILE, true)
+                .addString(PARAM_RUN_DATE, RUN_DATE, true)
+                .addLong(PARAM_FAIL_AT, 350L, false)  // 350건에서 실패 → 300건 커밋
                 .toJobParameters();
 
         // when
@@ -136,9 +137,9 @@ class RestartabilityTest {
     void 정상실행_1000건_완료() throws Exception {
         // given: failAt=0으로 실패 없이 진행
         JobParameters params = new JobParametersBuilder()
-                .addString("inputFile", INPUT_FILE, true)
-                .addString("runDate", RUN_DATE, true)
-                .addLong("failAt", 0L, false)
+                .addString(PARAM_INPUT_FILE, INPUT_FILE, true)
+                .addString(PARAM_RUN_DATE, RUN_DATE, true)
+                .addLong(PARAM_FAIL_AT, 0L, false)
                 .toJobParameters();
 
         // when
@@ -169,9 +170,9 @@ class RestartabilityTest {
     void ExecutionContext_저장_확인() throws Exception {
         // 1차 실행: 500건에서 실패
         JobParameters params = new JobParametersBuilder()
-                .addString("inputFile", INPUT_FILE, true)
-                .addString("runDate", RUN_DATE, true)
-                .addLong("failAt", 500L, false)
+                .addString(PARAM_INPUT_FILE, INPUT_FILE, true)
+                .addString(PARAM_RUN_DATE, RUN_DATE, true)
+                .addLong(PARAM_FAIL_AT, 500L, false)
                 .toJobParameters();
 
         JobExecution execution = jobOperatorTestUtils.startJob(params);
@@ -198,9 +199,9 @@ class RestartabilityTest {
     void 재시작_UPSERT_멱등성_보장() throws Exception {
         // ========== 1차 실행: 500건에서 실패 ==========
         JobParameters params = new JobParametersBuilder()
-                .addString("inputFile", INPUT_FILE, true)
-                .addString("runDate", RUN_DATE, true)
-                .addLong("failAt", 500L, false)
+                .addString(PARAM_INPUT_FILE, INPUT_FILE, true)
+                .addString(PARAM_RUN_DATE, RUN_DATE, true)
+                .addLong(PARAM_FAIL_AT, 500L, false)
                 .toJobParameters();
 
         JobExecution firstExecution = jobOperatorTestUtils.startJob(params);

@@ -31,6 +31,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static com.test.batchstudy.constants.BatchConstants.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -109,8 +110,8 @@ class RetryTest {
         maxFailures = 1;
         Step step = buildRetryStep();
         JobParameters params = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_clean_6.csv", true)
-                .addString("runDate", "2025-02-24", true)
+                .addString(PARAM_INPUT_FILE, "input/customers_clean_6.csv", true)
+                .addString(PARAM_RUN_DATE, "2025-02-24", true)
                 .toJobParameters();
 
         // when
@@ -138,8 +139,8 @@ class RetryTest {
         maxFailures = 999;
         Step step = buildRetryStep();
         JobParameters params = new JobParametersBuilder()
-                .addString("inputFile", "input/customers_clean_6.csv", true)
-                .addString("runDate", "2025-02-25", true)
+                .addString(PARAM_INPUT_FILE, "input/customers_clean_6.csv", true)
+                .addString(PARAM_RUN_DATE, "2025-02-25", true)
                 .toJobParameters();
 
         // when

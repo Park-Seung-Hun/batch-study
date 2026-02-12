@@ -10,6 +10,8 @@ import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.Map;
 
+import static com.test.batchstudy.constants.ValidationSql.VALID_RECORD_FILTER;
+
 /**
  * Week 07: customer_stg 테이블의 id 범위를 기반으로 파티션을 분할하는 Partitioner
  * <p>
@@ -27,10 +29,7 @@ public class CustomerPartitioner implements Partitioner {
 
     @Override
     public Map<String, ExecutionContext> partition(int gridSize) {
-        String query = """
-                SELECT MIN(id), MAX(id) FROM customer_stg
-                WHERE run_date = ? AND email LIKE '%@%' AND customer_id IS NOT NULL
-                """;
+        String query = "SELECT MIN(id), MAX(id) FROM customer_stg WHERE run_date = ? AND " + VALID_RECORD_FILTER;
 
         Map<String, ExecutionContext> result = new HashMap<>();
 

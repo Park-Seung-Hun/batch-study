@@ -255,6 +255,7 @@ batchstudy/
 │   ├── processor/             # ItemProcessor 구현
 │   ├── writer/                # ItemWriter 구현
 │   ├── listener/              # Listener 구현
+│   ├── partitioner/           # Partitioner 구현
 │   └── tasklet/               # Tasklet 구현
 └── src/main/resources/
     ├── application.yml
@@ -284,6 +285,7 @@ C001,kim@example.com,김철수,010-1234-5678
 | `runDate` | String (identifying) | 실행 기준일 | `2025-02-05` |
 | `chunkSize` | Long (non-identifying) | 청크 크기 | `100` |
 | `skipLimit` | Long (non-identifying) | 스킵 허용 건수 | `10` |
+| `threadCount` | Long (non-identifying) | 병렬 스레드 수 | `4` |
 
 ## 커밋 컨벤션
 

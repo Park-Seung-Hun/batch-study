@@ -50,7 +50,7 @@ public class RestartableItemProcessor implements ItemProcessor<CustomerCsv, Cust
     @Value("#{jobParameters['failAt'] ?: 0}")
     private int failAt;
 
-    private int effectiveFailAt;
+    private volatile int effectiveFailAt;
 
     @Value("#{jobParameters['runDate']}")
     private String runDate;

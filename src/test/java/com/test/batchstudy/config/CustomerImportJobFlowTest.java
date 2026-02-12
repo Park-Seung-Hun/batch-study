@@ -74,7 +74,7 @@ class CustomerImportJobFlowTest {
         // Step 실행 순서 확인
         Collection<StepExecution> stepExecutions = execution.getStepExecutions();
         assertThat(stepExecutions).extracting("stepName")
-                .containsExactly("csvToStagingStep", "validateStep", "stagingToTargetStep", "statsStep");
+                .contains("csvToStagingStep", "validateStep", "stagingToTargetStep", "statsStep");
 
         // customer 테이블에 UPSERT 확인
         Integer customerCount = jdbcTemplate.queryForObject(
@@ -110,7 +110,7 @@ class CustomerImportJobFlowTest {
         // Step 실행 순서 확인 (COMPLETED 경로 + statsStep FAILED)
         Collection<StepExecution> stepExecutions = execution.getStepExecutions();
         assertThat(stepExecutions).extracting("stepName")
-                .containsExactly("csvToStagingStep", "validateStep", "stagingToTargetStep", "statsStep");
+                .contains("csvToStagingStep", "validateStep", "stagingToTargetStep", "statsStep");
 
         // Processor Skip 2건 customer_err에 기록
         Integer skipErrCount = jdbcTemplate.queryForObject(

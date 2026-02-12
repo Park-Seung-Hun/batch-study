@@ -39,7 +39,7 @@
 | [Week 04](week-04-restartability.md) | 재시작 | ExecutionContext, ItemStream, 멱등성 | ✅ |
 | [Week 05](week-05-fault-tolerance.md) | 내결함성 | Skip, Retry, Listener, 오류 격리 | ✅ |
 | [Week 06](week-06-params-scope.md) | 파라미터 + Scope | JobScope, StepScope, Late Binding, Validator | ✅ |
-| [Week 07](week-07-parallel-tuning.md) | 병렬/튜닝 | Multi-thread, Partitioning, 성능 측정 | ⬜ |
+| [Week 07](week-07-parallel-tuning.md) | 병렬/튜닝 | Multi-thread, Partitioning, 성능 측정 | ✅ |
 | [Week 08](week-08-testing-ops.md) | 테스트 + 운영 | spring-batch-test, Actuator, Micrometer | ⬜ |
 
 **상태**: ⬜ 예정 / 🟡 진행중 / ✅ 완료
@@ -60,7 +60,7 @@ domainStudyJob                    ✅ 구현 완료
 customerImportJob
 ├── csvToStagingStep (Chunk)     ✅ Week 02 - CSV → customer_stg
 ├── validateStep (Tasklet)       ✅ Week 03 - 스테이징 검증 (ExitStatus: COMPLETED/INVALID)
-├── stagingToTargetStep (Chunk)  ✅ Week 03 - customer_stg → customer (UPSERT)
+├── stagingToTargetStep (Partitioned Master/Slave)  ✅ Week 03 + Week 07 파티셔닝
 ├── errorIsolateStep (Tasklet)   ✅ Week 03 - 오류 레코드 격리
 └── statsStep (Tasklet)          ✅ Week 03 - 일별 집계 (ExitStatus: COMPLETED/FAILED)
 ```
@@ -92,6 +92,7 @@ csvToStagingStep → validateStep
 | `chunkSize` | Long | 100 | 청크 크기 |
 | `skipLimit` | Long | 10 | 스킵 허용 건수 |
 | `retryLimit` | Long | 3 | 재시도 횟수 |
+| `threadCount` | Long | 4 | 병렬 스레드 수 |
 
 ---
 

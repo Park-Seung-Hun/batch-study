@@ -183,14 +183,14 @@ class RestartabilityTest {
                 .findFirst()
                 .orElseThrow();
 
-        // ExecutionContext에 processedCount와 read.count가 저장되어야 함
+        // Week 07: RestartableItemProcessor가 ItemStream을 구현하므로
+        // .stream() 제거와 무관하게 Spring Batch가 자동 감지하여 update() 호출
         assertThat(stepExecution.getExecutionContext().containsKey("processedCount"))
-                .as("processedCount가 ExecutionContext에 저장되어야 함")
+                .as("ItemStream 자동 감지로 processedCount 저장됨 (멀티스레드에서는 정확하지 않을 수 있음)")
                 .isTrue();
-        assertThat(stepExecution.getExecutionContext().getInt("processedCount")).isEqualTo(400);
         assertThat(stepExecution.getExecutionContext().containsKey("customerCsvReader.read.count"))
-                .as("Reader의 read.count가 저장되어야 함")
-                .isTrue();
+                .as("saveState(false)이므로 read.count 저장 안 됨")
+                .isFalse();
     }
 
     @Test

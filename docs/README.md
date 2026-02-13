@@ -40,7 +40,7 @@
 | [Week 05](week-05-fault-tolerance.md) | 내결함성 | Skip, Retry, Listener, 오류 격리 | ✅ |
 | [Week 06](week-06-params-scope.md) | 파라미터 + Scope | JobScope, StepScope, Late Binding, Validator | ✅ |
 | [Week 07](week-07-parallel-tuning.md) | 병렬/튜닝 | Multi-thread, Partitioning, 성능 측정 | ✅ |
-| [Week 08](week-08-testing-ops.md) | 테스트 + 운영 | spring-batch-test, Actuator, Micrometer | ⬜ |
+| [Week 08](week-08-refactoring.md) | 리팩토링 | 상수 추출, Config 분할, 테스트 기반 클래스, DRY | ✅ |
 
 **상태**: ⬜ 예정 / 🟡 진행중 / ✅ 완료
 

@@ -399,7 +399,7 @@ SELECT COUNT(*) FROM customer_err WHERE run_date = '2025-02-05';
 - [Week 05: 내결함성](docs/week-05-fault-tolerance.md)
 - [Week 06: 파라미터 + Scope](docs/week-06-params-scope.md)
 - [Week 07: 병렬/튜닝](docs/week-07-parallel-tuning.md)
-- [Week 08: 테스트 + 운영](docs/week-08-testing-ops.md)
+- [Week 08: 리팩토링](docs/week-08-refactoring.md)
 
 ## Spring 공식 문서
 
